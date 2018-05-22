@@ -772,6 +772,17 @@ ref<klee::ConstantExpr> Executor::evalConstant(Constant *c) {
             }
             ref<Expr> res = ConcatExpr::createN(kids.size(), kids.data());
             return cast<ConstantExpr>(res);
+        } else if (const ConstantVector *cv = dyn_cast<ConstantVector>(c)) {
+            llvm::SmallVector<ref<Expr>, 8> kids;
+            const size_t numOperands = cv->getNumOperands();
+            kids.reserve(numOperands);
+            for (unsigned i = numOperands; i != 0; --i) {
+                kids.push_back(evalConstant(cv->getOperand(i - 1)));
+            }
+            assert(Context::get().isLittleEndian() && "FIXME:Broken for big endian");
+            ref<Expr> res = ConcatExpr::createN(numOperands, kids.data());
+            assert(isa<ConstantExpr>(res) && "result of constant vector built is not a constant");
+            return cast<ConstantExpr>(res);
         } else {
             // Constant{Vector}
             *klee_warning_stream << *c << "\n";
@@ -1945,13 +1956,14 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
             bindLocal(ki, state, Result);
             break;
         }
+        case Instruction::ShuffleVector:
+            // Should never happen due to Scalarizer pass removing ShuffleVector
+            // instructions.
+            terminateStateOnExecError(state, "Unexpected ShuffleVector instruction");
+            break;
 
         // Other instructions...
         // Unhandled
-        case Instruction::ShuffleVector:
-            terminateStateOnError(state, "XXX vector instructions unhandled", "xxx.err");
-            break;
-
         default: {
             std::string errstr;
             llvm::raw_string_ostream err(errstr);
