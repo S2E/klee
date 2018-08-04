@@ -49,8 +49,19 @@ public:
     /// computeValue - Compute a feasible value for the expression.
     ///
     /// The query expression is guaranteed to be non-constant.
-    virtual bool computeValue(const Query &query, ref<Expr> &result) = 0;
+    virtual bool computeValue(const Query &query, ref<Expr> &result,
+                              Solver::Optimization opt = Solver::Optimization::None) = 0;
 
+    /// Compute the initial values for a list of objects.
+    ///
+    /// \param values - On success, this vector will be filled in with an array
+    /// of bytes for each given object (with length matching the object size).
+    /// The bytes correspond to the initial values for the objects for some
+    /// satisfying assignment.
+    ///
+    /// \return True on success.
+    ///
+    /// NOTE: This function returns failure if there is no satisfying assignment
     virtual bool computeInitialValues(const Query &query, const std::vector<const Array *> &objects,
                                       std::vector<std::vector<unsigned char>> &values, bool &hasSolution) = 0;
 };

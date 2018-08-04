@@ -141,7 +141,7 @@ bool QueryLoggingSolver::computeValidity(const Query &query, Solver::Validity &r
     return success;
 }
 
-bool QueryLoggingSolver::computeValue(const Query &query, ref<Expr> &result) {
+bool QueryLoggingSolver::computeValue(const Query &query, ref<Expr> &result, Solver::Optimization opt) {
     Query withFalse = query.withFalse();
     startQuery(query, "Value", &withFalse);
 

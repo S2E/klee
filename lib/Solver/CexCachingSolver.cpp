@@ -68,13 +68,14 @@ class CexCachingSolver : public SolverImpl {
 public:
     CexCachingSolver(Solver *_solver) : solver(_solver) {
     }
-    ~CexCachingSolver();
 
-    bool computeTruth(const Query &, bool &isValid);
-    bool computeValidity(const Query &, Solver::Validity &result);
-    bool computeValue(const Query &, ref<Expr> &result);
-    bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
-                              std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
+    virtual ~CexCachingSolver();
+
+    virtual bool computeTruth(const Query &, bool &isValid);
+    virtual bool computeValidity(const Query &, Solver::Validity &result);
+    virtual bool computeValue(const Query &, ref<Expr> &result, Solver::Optimization opt = Solver::Optimization::None);
+    virtual bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
+                                      std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
 };
 
 ///
@@ -282,7 +283,7 @@ bool CexCachingSolver::computeTruth(const Query &query, bool &isValid) {
     return true;
 }
 
-bool CexCachingSolver::computeValue(const Query &query, ref<Expr> &result) {
+bool CexCachingSolver::computeValue(const Query &query, ref<Expr> &result, Solver::Optimization opt) {
     TimerStatIncrementer t(stats::cexCacheTime);
 
     Assignment *a;

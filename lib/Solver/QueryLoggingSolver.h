@@ -62,11 +62,12 @@ public:
     virtual ~QueryLoggingSolver();
 
     /// implementation of the SolverImpl interface
-    bool computeTruth(const Query &query, bool &isValid);
-    bool computeValidity(const Query &query, Solver::Validity &result);
-    bool computeValue(const Query &query, ref<Expr> &result);
-    bool computeInitialValues(const Query &query, const std::vector<const Array *> &objects,
-                              std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
+    virtual bool computeTruth(const Query &query, bool &isValid);
+    virtual bool computeValidity(const Query &query, Solver::Validity &result);
+    virtual bool computeValue(const Query &query, ref<Expr> &result,
+                              Solver::Optimization opt = Solver::Optimization::None);
+    virtual bool computeInitialValues(const Query &query, const std::vector<const Array *> &objects,
+                                      std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
 };
 
 #endif /* KLEE_QUERYLOGGINGSOLVER_H */

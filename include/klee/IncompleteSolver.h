@@ -69,7 +69,8 @@ public:
     virtual IncompleteSolver::PartialValidity computeTruth(const Query &) = 0;
 
     /// computeValue - Attempt to compute a value for the given expression.
-    virtual bool computeValue(const Query &, ref<Expr> &result) = 0;
+    virtual bool computeValue(const Query &, ref<Expr> &result,
+                              Solver::Optimization opt = Solver::Optimization::None) = 0;
 
     /// computeInitialValues - Attempt to compute the constant values
     /// for the initial state of each given object. If a correct result
@@ -88,13 +89,13 @@ private:
 
 public:
     StagedSolverImpl(IncompleteSolver *_primary, Solver *_secondary);
-    ~StagedSolverImpl();
+    virtual ~StagedSolverImpl();
 
-    bool computeTruth(const Query &, bool &isValid);
-    bool computeValidity(const Query &, Solver::Validity &result);
-    bool computeValue(const Query &, ref<Expr> &result);
-    bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
-                              std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
+    virtual bool computeTruth(const Query &, bool &isValid);
+    virtual bool computeValidity(const Query &, Solver::Validity &result);
+    virtual bool computeValue(const Query &, ref<Expr> &result, Solver::Optimization opt = Solver::Optimization::None);
+    virtual bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
+                                      std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
 };
 }
 

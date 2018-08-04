@@ -108,16 +108,17 @@ bool TimingSolver::mayBeFalse(const ExecutionState &state, ref<Expr> expr, bool 
     return true;
 }
 
-bool TimingSolver::getValue(const ExecutionState &state, ref<Expr> expr, ref<ConstantExpr> &result) {
-
+bool TimingSolver::getValue(const ExecutionState &state, ref<Expr> expr, ref<ConstantExpr> &result,
+                            Solver::Optimization opt) {
     // Fast path, to avoid timer and OS overhead.
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(expr)) {
         result = CE;
         return true;
     }
 
-    if (simplifyExprs)
+    if (simplifyExprs) {
         expr = state.constraints.simplifyExpr(expr);
+    }
 
     bool success;
 
@@ -125,14 +126,14 @@ bool TimingSolver::getValue(const ExecutionState &state, ref<Expr> expr, ref<Con
         sys::TimeValue now(0, 0), user(0, 0), delta(0, 0), sys(0, 0);
         sys::Process::GetTimeUsage(now, user, sys);
 
-        success = solver->getValue(Query(state.constraints, expr), result);
+        success = solver->getValue(Query(state.constraints, expr), result, opt);
 
         sys::Process::GetTimeUsage(delta, user, sys);
         delta -= now;
         stats::solverTime += delta.usec();
         state.queryCost += delta.usec() / 1000000.;
     } else {
-        success = solver->getValue(Query(state.constraints, expr), result);
+        success = solver->getValue(Query(state.constraints, expr), result, opt);
     }
 
     return success;

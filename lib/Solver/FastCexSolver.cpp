@@ -991,7 +991,7 @@ public:
     ~FastCexSolver();
 
     IncompleteSolver::PartialValidity computeTruth(const Query &);
-    bool computeValue(const Query &, ref<Expr> &result);
+    bool computeValue(const Query &, ref<Expr> &result, Solver::Optimization opt = Solver::Optimization::None);
     bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
                               std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
 };
@@ -1077,7 +1077,7 @@ IncompleteSolver::PartialValidity FastCexSolver::computeTruth(const Query &query
     return isValid ? IncompleteSolver::MustBeTrue : IncompleteSolver::MayBeFalse;
 }
 
-bool FastCexSolver::computeValue(const Query &query, ref<Expr> &result) {
+bool FastCexSolver::computeValue(const Query &query, ref<Expr> &result, Solver::Optimization opt) {
     CexData cd;
 
     bool isValid;

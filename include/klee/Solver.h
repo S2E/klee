@@ -58,6 +58,7 @@ class Solver {
 
 public:
     enum Validity { True = 1, False = -1, Unknown = 0 };
+    enum Optimization { None, Minimize, Maximize };
 
 public:
     /// validity_to_str - Return the name of given Validity enum value.
@@ -119,7 +120,23 @@ public:
     /// satisying assignment.
     ///
     /// \return True on success.
-    bool getValue(const Query &, ref<ConstantExpr> &result);
+    bool getValue(const Query &, ref<ConstantExpr> &result, Optimization opt = Optimization::None);
+
+    /// getMinValue - Compute the minimum possible value for the given expression.
+    ///
+    /// \param [out] result - On success, the minimum value for the expresion
+    /// in some satisfying assignment.
+    ///
+    /// \return True on success.
+    bool getMinValue(const Query &, ref<ConstantExpr> &result);
+
+    /// getMaxValue - Compute the maximum possible value for the given expression.
+    ///
+    /// \param [out] result - On success, the maximum value for the expresion
+    /// in some satisfying assignment.
+    ///
+    /// \return True on success.
+    bool getMaxValue(const Query &, ref<ConstantExpr> &result);
 
     /// getInitialValues - Compute the initial values for a list of objects.
     ///

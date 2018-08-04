@@ -852,9 +852,7 @@ ref<Expr> Executor::toUnique(const ExecutionState &state, ref<Expr> &e) {
     return result;
 }
 
-/* Concretize the given expression, and return a possible constant value.
-   'reason' is just a documentation string stating the reason for concretization. */
-ref<klee::ConstantExpr> Executor::toConstant(ExecutionState &state, ref<Expr> e, const char *reason) {
+ref<klee::ConstantExpr> Executor::toConstantSilent(ExecutionState &state, ref<Expr> e, Solver::Optimization opt) {
     e = simplifyExpr(state, e);
     e = state.constraints.simplifyExpr(e);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(e))
@@ -867,7 +865,29 @@ ref<klee::ConstantExpr> Executor::toConstant(ExecutionState &state, ref<Expr> e,
         assert(isa<ConstantExpr>(evalResult) && "Must be concrete");
         value = dyn_cast<ConstantExpr>(evalResult);
     } else {
-        bool success = _solver(state)->getValue(state, e, value);
+        bool success = _solver(state)->getValue(state, e, value, opt);
+        assert(success && "FIXME: Unhandled solver failure");
+        (void) success;
+    }
+
+    return value;
+}
+
+ref<klee::ConstantExpr> Executor::toConstant(ExecutionState &state, ref<Expr> e, const char *reason,
+                                             Solver::Optimization opt) {
+    e = simplifyExpr(state, e);
+    e = state.constraints.simplifyExpr(e);
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(e))
+        return CE;
+
+    ref<ConstantExpr> value;
+
+    if (concolicMode) {
+        ref<Expr> evalResult = state.concolics->evaluate(e);
+        assert(isa<ConstantExpr>(evalResult) && "Must be concrete");
+        value = dyn_cast<ConstantExpr>(evalResult);
+    } else {
+        bool success = _solver(state)->getValue(state, e, value, opt);
         assert(success && "FIXME: Unhandled solver failure");
         (void) success;
     }
@@ -891,25 +911,12 @@ ref<klee::ConstantExpr> Executor::toConstant(ExecutionState &state, ref<Expr> e,
     return value;
 }
 
-ref<klee::ConstantExpr> Executor::toConstantSilent(ExecutionState &state, ref<Expr> e) {
-    e = simplifyExpr(state, e);
-    e = state.constraints.simplifyExpr(e);
-    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(e))
-        return CE;
+ref<klee::ConstantExpr> Executor::toMinConstant(ExecutionState &state, ref<Expr> e, const char *reason) {
+    return toConstant(state, e, reason, Solver::Optimization::Minimize);
+}
 
-    ref<ConstantExpr> value;
-
-    if (concolicMode) {
-        ref<Expr> evalResult = state.concolics->evaluate(e);
-        assert(isa<ConstantExpr>(evalResult) && "Must be concrete");
-        value = dyn_cast<ConstantExpr>(evalResult);
-    } else {
-        bool success = _solver(state)->getValue(state, e, value);
-        assert(success && "FIXME: Unhandled solver failure");
-        (void) success;
-    }
-
-    return value;
+ref<klee::ConstantExpr> Executor::toMaxConstant(ExecutionState &state, ref<Expr> e, const char *reason) {
+    return toConstant(state, e, reason, Solver::Optimization::Maximize);
 }
 
 void Executor::stepInstruction(ExecutionState &state) {

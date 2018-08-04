@@ -344,15 +344,29 @@ public:
     /// Return a constant value for the given expression, forcing it to
     /// be constant in the given state but WITHOUT adding constraints.
     /// Note that this function could break correctness !
-    ref<klee::ConstantExpr> toConstantSilent(ExecutionState &state, ref<Expr> e);
+    ref<klee::ConstantExpr> toConstantSilent(ExecutionState &state, ref<Expr> e,
+                                             Solver::Optimization opt = Solver::Optimization::None);
 
     /// Return a constant value for the given expression, forcing it to
     /// be constant in the given state by adding a constraint if
     /// necessary. Note that this function breaks completeness and
     /// should generally be avoided.
     ///
-    /// \param purpose An identify string to printed in case of concretization.
-    ref<klee::ConstantExpr> toConstant(ExecutionState &state, ref<Expr> e, const char *purpose);
+    /// \param reason An identify string to be printed in case of concretization.
+    ref<klee::ConstantExpr> toConstant(ExecutionState &state, ref<Expr> e, const char *reason,
+                                       Solver::Optimization opt = Solver::Optimization::None);
+
+    /// Return the minimum constant value for the given expression, forcing it
+    /// to be constant in the given state by adding a constraint if
+    /// necessary. Note that this function breaks completeness and should
+    /// generally be avoided.
+    ref<klee::ConstantExpr> toMinConstant(ExecutionState &state, ref<Expr> e, const char *reason);
+
+    /// Return the maximum constant value for the given expression, forcing it
+    /// to be constant in the given state by adding a constraint if
+    /// necessary. Note that this function breaks completeness and should
+    /// generally be avoided.
+    ref<klee::ConstantExpr> toMaxConstant(ExecutionState &state, ref<Expr> e, const char *reason);
 
     virtual const llvm::Module *setModule(llvm::Module *module, const ModuleOptions &opts,
                                           bool createStatsTracker = true);

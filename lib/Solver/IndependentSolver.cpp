@@ -263,15 +263,16 @@ private:
 public:
     IndependentSolver(Solver *_solver) : solver(_solver) {
     }
-    ~IndependentSolver() {
+
+    virtual ~IndependentSolver() {
         delete solver;
     }
 
-    bool computeTruth(const Query &, bool &isValid);
-    bool computeValidity(const Query &, Solver::Validity &result);
-    bool computeValue(const Query &, ref<Expr> &result);
-    bool computeInitialValues(const Query &query, const std::vector<const Array *> &objects,
-                              std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {
+    virtual bool computeTruth(const Query &, bool &isValid);
+    virtual bool computeValidity(const Query &, Solver::Validity &result);
+    virtual bool computeValue(const Query &, ref<Expr> &result, Solver::Optimization opt = Solver::Optimization::None);
+    virtual bool computeInitialValues(const Query &query, const std::vector<const Array *> &objects,
+                                      std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {
         return solver->impl->computeInitialValues(query, objects, values, hasSolution);
     }
 };
@@ -290,7 +291,7 @@ bool IndependentSolver::computeTruth(const Query &query, bool &isValid) {
     return solver->impl->computeTruth(Query(tmp, query.expr), isValid);
 }
 
-bool IndependentSolver::computeValue(const Query &query, ref<Expr> &result) {
+bool IndependentSolver::computeValue(const Query &query, ref<Expr> &result, Solver::Optimization opt) {
     std::vector<ref<Expr>> required;
     IndependentElementSet eltsClosure = getIndependentConstraints(query, required);
     ConstraintManager tmp(required);

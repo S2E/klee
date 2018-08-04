@@ -62,18 +62,20 @@ private:
 public:
     CachingSolver(Solver *s) : solver(s) {
     }
-    ~CachingSolver() {
+
+    virtual ~CachingSolver() {
         cache.clear();
         delete solver;
     }
 
-    bool computeValidity(const Query &, Solver::Validity &result);
-    bool computeTruth(const Query &, bool &isValid);
-    bool computeValue(const Query &query, ref<Expr> &result) {
-        return solver->impl->computeValue(query, result);
+    virtual bool computeValidity(const Query &, Solver::Validity &result);
+    virtual bool computeTruth(const Query &, bool &isValid);
+    virtual bool computeValue(const Query &query, ref<Expr> &result,
+                              Solver::Optimization opt = Solver::Optimization::None) {
+        return solver->impl->computeValue(query, result, opt);
     }
-    bool computeInitialValues(const Query &query, const std::vector<const Array *> &objects,
-                              std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {
+    virtual bool computeInitialValues(const Query &query, const std::vector<const Array *> &objects,
+                                      std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {
         return solver->impl->computeInitialValues(query, objects, values, hasSolution);
     }
 };

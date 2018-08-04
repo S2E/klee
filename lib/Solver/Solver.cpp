@@ -104,7 +104,7 @@ bool Solver::mayBeFalse(const Query &query, bool &result) {
     return true;
 }
 
-bool Solver::getValue(const Query &query, ref<ConstantExpr> &result) {
+bool Solver::getValue(const Query &query, ref<ConstantExpr> &result, Optimization opt) {
     // Maintain invariants implementation expect.
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(query.expr)) {
         result = CE;
@@ -113,11 +113,20 @@ bool Solver::getValue(const Query &query, ref<ConstantExpr> &result) {
 
     // FIXME: Push ConstantExpr requirement down.
     ref<Expr> tmp;
-    if (!impl->computeValue(query, tmp))
+    if (!impl->computeValue(query, tmp, opt)) {
         return false;
+    }
 
     result = cast<ConstantExpr>(tmp);
     return true;
+}
+
+bool Solver::getMinValue(const Query &query, ref<ConstantExpr> &result) {
+    return getValue(query, result, Optimization::Minimize);
+}
+
+bool Solver::getMaxValue(const Query &query, ref<ConstantExpr> &result) {
+    return getValue(query, result, Optimization::Maximize);
 }
 
 bool Solver::getInitialValues(const Query &query, const std::vector<const Array *> &objects,
@@ -287,15 +296,16 @@ private:
 public:
     ValidatingSolver(Solver *_solver, Solver *_oracle) : solver(_solver), oracle(_oracle) {
     }
-    ~ValidatingSolver() {
+
+    virtual ~ValidatingSolver() {
         delete solver;
     }
 
-    bool computeValidity(const Query &, Solver::Validity &result);
-    bool computeTruth(const Query &, bool &isValid);
-    bool computeValue(const Query &, ref<Expr> &result);
-    bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
-                              std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
+    virtual bool computeValidity(const Query &, Solver::Validity &result);
+    virtual bool computeTruth(const Query &, bool &isValid);
+    virtual bool computeValue(const Query &, ref<Expr> &result, Solver::Optimization opt = Solver::Optimization::None);
+    virtual bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
+                                      std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
 };
 
 bool ValidatingSolver::computeTruth(const Query &query, bool &isValid) {
@@ -406,7 +416,7 @@ bool ValidatingSolver::computeValidity(const Query &query, Solver::Validity &res
 #endif
 }
 
-bool ValidatingSolver::computeValue(const Query &query, ref<Expr> &result) {
+bool ValidatingSolver::computeValue(const Query &query, ref<Expr> &result, Solver::Optimization opt) {
     bool answer;
 
     if (!solver->impl->computeValue(query, result))
@@ -473,23 +483,26 @@ public:
     DummySolverImpl() {
     }
 
-    bool computeValidity(const Query &, Solver::Validity &result) {
+    virtual bool computeValidity(const Query &, Solver::Validity &result) {
         ++stats::queries;
         // FIXME: We should have stats::queriesFail;
         return false;
     }
-    bool computeTruth(const Query &, bool &isValid) {
+
+    virtual bool computeTruth(const Query &, bool &isValid) {
         ++stats::queries;
         // FIXME: We should have stats::queriesFail;
         return false;
     }
-    bool computeValue(const Query &, ref<Expr> &result) {
+
+    virtual bool computeValue(const Query &, ref<Expr> &result, Solver::Optimization opt = Solver::Optimization::None) {
         ++stats::queries;
         ++stats::queryCounterexamples;
         return false;
     }
-    bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
-                              std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {
+
+    virtual bool computeInitialValues(const Query &, const std::vector<const Array *> &objects,
+                                      std::vector<std::vector<unsigned char>> &values, bool &hasSolution) {
         ++stats::queries;
         ++stats::queryCounterexamples;
         return false;

@@ -51,7 +51,8 @@ public:
 
     bool mayBeFalse(const ExecutionState &, ref<Expr>, bool &result);
 
-    bool getValue(const ExecutionState &, ref<Expr> expr, ref<ConstantExpr> &result);
+    bool getValue(const ExecutionState &, ref<Expr> expr, ref<ConstantExpr> &result,
+                  Solver::Optimization = Solver::Optimization::None);
 
     bool getInitialValues(const ConstraintManager &constraints, const std::vector<const Array *> &objects,
                           std::vector<std::vector<unsigned char>> &result, double &queryCost);

@@ -77,8 +77,8 @@ public:
     Z3BaseSolverImpl();
     virtual ~Z3BaseSolverImpl();
 
-    bool computeTruth(const Query &, bool &isValid);
-    bool computeValue(const Query &, ref<Expr> &result);
+    virtual bool computeTruth(const Query &, bool &isValid);
+    virtual bool computeValue(const Query &, ref<Expr> &result, Solver::Optimization opt = Solver::Optimization::None);
     bool computeInitialValues(const Query &query, const std::vector<const Array *> &objects,
                               std::vector<std::vector<unsigned char>> &values, bool &hasSolution);
 
@@ -89,8 +89,6 @@ protected:
 
     virtual z3::check_result check(const Query &) = 0;
     virtual void postCheck(const Query &) = 0;
-
-    void extractModel(const std::vector<const Array *> &objects, std::vector<std::vector<unsigned char>> &values);
 
     void push() {
         solver_.push();
@@ -116,6 +114,12 @@ protected:
 private:
     void configureSolver();
     void createBuilder();
+
+    void extractValues(const z3::model &model, const std::vector<const Array *> &objects,
+                       std::vector<std::vector<unsigned char>> &values);
+
+    bool computeOptimizedValue(const Query &query, ref<Expr> &result,
+                               Solver::Optimization opt = Solver::Optimization::None);
 };
 
 class Z3StackSolverImpl : public Z3BaseSolverImpl {
@@ -198,10 +202,8 @@ Z3BaseSolverImpl::Z3BaseSolverImpl() : solver_(context_, "QF_ABV") {
 Z3BaseSolverImpl::~Z3BaseSolverImpl() {
 }
 
-void Z3BaseSolverImpl::extractModel(const std::vector<const Array *> &objects,
-                                    std::vector<std::vector<unsigned char>> &values) {
-    z3::model model = solver_.get_model();
-
+void Z3BaseSolverImpl::extractValues(const z3::model &model, const std::vector<const Array *> &objects,
+                                     std::vector<std::vector<unsigned char>> &values) {
     values.reserve(objects.size());
     for (std::vector<const Array *>::const_iterator it = objects.begin(), ie = objects.end(); it != ie; ++it) {
         const Array *array = *it;
@@ -235,16 +237,62 @@ bool Z3BaseSolverImpl::computeTruth(const Query &query, bool &isValid) {
 }
 
 // TODO: Use model evaluation in Z3
-bool Z3BaseSolverImpl::computeValue(const Query &query, ref<Expr> &result) {
+bool Z3BaseSolverImpl::computeValue(const Query &query, ref<Expr> &result, Solver::Optimization opt) {
     std::vector<const Array *> objects;
     std::vector<std::vector<unsigned char>> values;
-    bool hasSolution;
 
+    // Find the objects used in the expression
     findSymbolicObjects(query.expr, objects);
-    if (!computeInitialValues(query.withFalse(), objects, values, hasSolution))
-        return false;
-    assert(hasSolution && "state has invalid constraint set");
 
+    if (opt == Solver::Optimization::None) {
+        // Compute an assignment for the objects found
+        bool hasSolution;
+        if (!computeInitialValues(query.withFalse(), objects, values, hasSolution))
+            return false;
+        assert(hasSolution && "state has invalid constraint set");
+    } else {
+        // Compute an optimized assignment for the objects found
+        ++stats::queries;
+        ++stats::queryCounterexamples;
+
+        z3::optimize optimize(context_);
+        Query queryWithFalse = query.withFalse();
+
+        for (ConditionNodeRef node = queryWithFalse.constraints.head(), root = queryWithFalse.constraints.root();
+             node != root; node = node->parent()) {
+            optimize.add(builder_->construct(node->expr()));
+        }
+
+        // Note the negation, since we're checking for validity
+        // (i.e., a counterexample)
+        optimize.add(!builder_->construct(queryWithFalse.expr));
+
+        // Apply the optimization
+        switch (opt) {
+            case Solver::Optimization::None:
+                break;
+            case Solver::Optimization::Minimize:
+                optimize.minimize(builder_->construct(query.expr));
+                break;
+            case Solver::Optimization::Maximize:
+                optimize.maximize(builder_->construct(query.expr));
+                break;
+        }
+
+        switch (optimize.check()) {
+            case z3::unknown:
+                return false;
+            case z3::unsat:
+                ++stats::queriesValid;
+                assert("state has invalid constraint set");
+            case z3::sat:
+                z3::model model = optimize.get_model();
+                extractValues(model, objects, values);
+                ++stats::queriesInvalid;
+        }
+    }
+
+    // Evaluate the expression with the computed assignment
     Assignment a(objects, values);
     result = a.evaluate(query.expr);
 
@@ -268,7 +316,8 @@ bool Z3BaseSolverImpl::computeInitialValues(const Query &query, const std::vecto
             ++stats::queriesValid;
             return true;
         case z3::sat:
-            extractModel(objects, values);
+            z3::model model = solver_.get_model();
+            extractValues(model, objects, values);
             postCheck(query);
             hasSolution = true;
             ++stats::queriesInvalid;
@@ -403,19 +452,15 @@ Z3ResetSolverImpl::~Z3ResetSolverImpl() {
 }
 
 z3::check_result Z3ResetSolverImpl::check(const Query &query) {
-    std::list<ConditionNodeRef> cur_constraints;
-
     for (ConditionNodeRef node = query.constraints.head(), root = query.constraints.root(); node != root;
          node = node->parent()) {
-        cur_constraints.push_front(node);
+        solver_.add(builder_->construct(node->expr()));
     }
 
-    for (std::list<ConditionNodeRef>::iterator it = cur_constraints.begin(), ie = cur_constraints.end(); it != ie;
-         ++it) {
-        solver_.add(builder_->construct((*it)->expr()));
-    }
-
+    // Note the negation, since we're checking for validity
+    // (i.e., a counterexample)
     solver_.add(!builder_->construct(query.expr));
+
     return solver_.check();
 }
 
@@ -454,11 +499,12 @@ z3::check_result Z3AssumptionSolverImpl::check(const Query &query) {
 
     z3::expr_vector assumptions(context_);
 
-    for (std::list<ConditionNodeRef>::iterator it = cur_constraints.begin(), ie = cur_constraints.end(); it != ie;
-         ++it) {
-        assumptions.push_back(getAssumption((*it)->expr()));
+    for (auto const &constraint : cur_constraints) {
+        assumptions.push_back(getAssumption(constraint->expr()));
     }
+
     assumptions.push_back(getAssumption(Expr::createIsZero(query.expr)));
+
     return solver_.check(assumptions);
 }
 

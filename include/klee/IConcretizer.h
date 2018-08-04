@@ -33,6 +33,7 @@
 
 #include <inttypes.h>
 #include <string>
+
 #include "Expr.h"
 
 namespace klee {
@@ -41,6 +42,7 @@ class IConcretizer {
 public:
     virtual ~IConcretizer() {
     }
+
     virtual uint64_t concretize(ref<Expr> expression, const std::string &reason, bool silent = false) = 0;
 };
 }
