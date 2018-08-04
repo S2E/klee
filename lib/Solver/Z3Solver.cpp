@@ -30,11 +30,12 @@
 #include "klee/Common.h"
 #include "klee/Constraints.h"
 #include "klee/Solver.h"
-#include "klee/SolverImpl.h"
 #include "klee/SolverStats.h"
 #include "klee/util/Assignment.h"
 #include "klee/util/ExprHashMap.h"
 #include "klee/util/ExprUtil.h"
+
+#include "SolverImpl.h"
 
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>

@@ -11,10 +11,10 @@
 
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
-#include "klee/IncompleteSolver.h"
-#include "klee/SolverImpl.h"
-
 #include "klee/SolverStats.h"
+
+#include "IncompleteSolver.h"
+#include "SolverImpl.h"
 
 #include <tr1/unordered_map>
 

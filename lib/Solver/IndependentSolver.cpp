@@ -11,9 +11,9 @@
 
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
-#include "klee/SolverImpl.h"
-
 #include "klee/util/ExprUtil.h"
+
+#include "SolverImpl.h"
 
 #include <iostream>
 #include <map>

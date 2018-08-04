@@ -11,12 +11,13 @@
 
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
-#include "klee/IncompleteSolver.h"
 #include "klee/util/ExprEvaluator.h"
 #include "klee/util/ExprRangeEvaluator.h"
 #include "klee/util/ExprVisitor.h"
 // FIXME: Use APInt.
 #include "klee/Internal/Support/IntEvaluation.h"
+
+#include "IncompleteSolver.h"
 
 #include <cassert>
 #include <iostream>

@@ -7,17 +7,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "klee/Solver.h"
-#include "klee/SolverImpl.h"
-
-#include "klee/SolverStats.h"
-
 #include "klee/Constraints.h"
 #include "klee/Expr.h"
 #include "klee/Internal/Support/Timer.h"
+#include "klee/Solver.h"
+#include "klee/SolverStats.h"
 #include "klee/util/Assignment.h"
 #include "klee/util/ExprPPrinter.h"
 #include "klee/util/ExprTemplates.h"
+
+#include "SolverImpl.h"
 
 #include <cassert>
 #include <cstdio>

@@ -12,8 +12,9 @@
 #define KLEE_QUERYLOGGINGSOLVER_H
 
 #include "klee/Solver.h"
-#include "klee/SolverImpl.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include "SolverImpl.h"
 
 using namespace klee;
 

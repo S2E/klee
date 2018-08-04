@@ -11,7 +11,8 @@
 #define KLEE_INCOMPLETESOLVER_H
 
 #include "klee/Solver.h"
-#include "klee/SolverImpl.h"
+
+#include "SolverImpl.h"
 
 namespace klee {
 
