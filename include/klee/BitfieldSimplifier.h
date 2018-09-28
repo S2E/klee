@@ -32,17 +32,18 @@
 
 #include "klee/Expr.h"
 #include "klee/util/ExprHashMap.h"
+#include "llvm/ADT/APInt.h"
 
 namespace klee {
 
 class BitfieldSimplifier {
 protected:
     struct BitsInfo {
-        uint64_t ignoredBits;   ///< Bits that can be ignored because they
-                                ///< are not used by higher-level expressions
-                                ///< (passed top-down)
-        uint64_t knownOneBits;  ///< Bits known to be one (passed bottom-up)
-        uint64_t knownZeroBits; ///< Bits known to be zero (passed bottom-up)
+        llvm::APInt ignoredBits;   ///< Bits that can be ignored because they
+                                   ///< are not used by higher-level expressions
+                                   ///< (passed top-down)
+        llvm::APInt knownOneBits;  ///< Bits known to be one (passed bottom-up)
+        llvm::APInt knownZeroBits; ///< Bits known to be zero (passed bottom-up)
     };
     typedef std::pair<ref<Expr>, BitsInfo> ExprBitsInfo;
 
@@ -51,14 +52,14 @@ protected:
 
     ExprHashMap<ExprBitsInfo> m_simplifiedExpressions;
 
-    ref<Expr> replaceWithConstant(ref<Expr> e, uint64_t value);
+    ref<Expr> replaceWithConstant(ref<Expr> e, const llvm::APInt& value);
 
-    ExprBitsInfo doSimplifyBits(ref<Expr> e, uint64_t ignoredBits);
+    ExprBitsInfo doSimplifyBits(ref<Expr> e, const llvm::APInt& ignoredBits);
 
 public:
     uint64_t m_cacheHits, m_cacheMisses;
 
-    ref<Expr> simplify(ref<Expr> e, uint64_t *knownZeroBits = NULL);
+    ref<Expr> simplify(ref<Expr> e, llvm::APInt *knownZeroBits = NULL);
 
     BitfieldSimplifier() {
         m_cacheHits = 0;

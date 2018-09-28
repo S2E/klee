@@ -148,7 +148,7 @@ static ref<Expr> SimplifyExtractLShr(const ref<Expr> &e) {
         return e;
     }
 
-    auto offset = shift->getZExtValue();
+    auto offset = shift->getLimitedValue();
     if (offset % 8) {
         return e;
     }
