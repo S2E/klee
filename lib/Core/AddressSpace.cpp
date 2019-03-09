@@ -188,13 +188,13 @@ bool AddressSpace::resolveOneFast(BitfieldSimplifier &simplifier, ref<Expr> addr
     }
 
     ref<Expr> offset = add->getRight();
-    uint64_t knownZeroBits;
+    llvm::APInt knownZeroBits;
     simplifier.simplify(offset, &knownZeroBits);
 
     uint64_t inBoundsSize;
     // Only handle 8-bits sized objects for now.
     // TODO: make it work for arbitrary consecutive numbers of 1s.
-    if ((knownZeroBits & ~(uint64_t) 0xff) == ~(uint64_t) 0xff) {
+    if ((knownZeroBits & ~llvm::APInt(64, 0xff)) == ~llvm::APInt(64, 0xff)) {
         inBoundsSize = 1 << 8;
     } else {
         return false;
