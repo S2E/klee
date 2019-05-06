@@ -25,7 +25,7 @@ namespace llvm {
 class BasicBlock;
 class Function;
 class Instruction;
-}
+} // namespace llvm
 
 namespace klee {
 class ExecutionState;
@@ -147,6 +147,6 @@ public:
         os << "</BatchingSearcher>\n";
     }
 };
-}
+} // namespace klee
 
 #endif

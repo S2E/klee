@@ -31,7 +31,7 @@ typedef std::vector<std::pair<ref<ReadExpr>, ref<ConstantExpr>>> ImpliedValueLis
 namespace ImpliedValue {
 void getImpliedValues(ref<Expr> e, ref<ConstantExpr> cvalue, ImpliedValueList &result);
 void checkForImpliedValues(Solver *S, ref<Expr> e, ref<ConstantExpr> cvalue);
-}
-}
+} // namespace ImpliedValue
+} // namespace klee
 
 #endif

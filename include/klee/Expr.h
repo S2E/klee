@@ -1596,6 +1596,6 @@ inline bool Expr::isFalse() const {
     return false;
 }
 
-} // End klee namespace
+} // namespace klee
 
 #endif

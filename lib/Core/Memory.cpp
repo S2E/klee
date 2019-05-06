@@ -165,7 +165,7 @@ ObjectState::ObjectState(const ObjectState &os)
     assert(!os.concreteMask || (os.size == os.concreteMask->getBitCount()));
 
     if (os.knownSymbolics) {
-        knownSymbolics = new ref<Expr>[ size ];
+        knownSymbolics = new ref<Expr>[size];
         for (unsigned i = 0; i < size; i++)
             knownSymbolics[i] = os.knownSymbolics[i];
     }
@@ -210,7 +210,7 @@ ObjectState *ObjectState::split(MemoryObject *newObject, unsigned offset) const 
     ret->updates = updates;
 
     if (knownSymbolics) {
-        ret->knownSymbolics = new ref<Expr>[ newObject->size ];
+        ret->knownSymbolics = new ref<Expr>[newObject->size];
         for (unsigned i = 0; i < newObject->size; i++)
             ret->knownSymbolics[i] = knownSymbolics[i + offset];
     }
@@ -242,7 +242,7 @@ ObjectState *ObjectState::getCopy(BitArray *_concreteMask, ConcreteBuffer *_conc
     }
 
     if (knownSymbolics) {
-        ret->knownSymbolics = new ref<Expr>[ size ];
+        ret->knownSymbolics = new ref<Expr>[size];
         for (unsigned i = 0; i < size; i++)
             ret->knownSymbolics[i] = knownSymbolics[i];
     }
@@ -442,7 +442,7 @@ inline void ObjectState::setKnownSymbolic(unsigned offset, Expr *value /* can be
         knownSymbolics[offset] = value;
     } else {
         if (value) {
-            knownSymbolics = new ref<Expr>[ size ];
+            knownSymbolics = new ref<Expr>[size];
             knownSymbolics[offset] = value;
         }
     }

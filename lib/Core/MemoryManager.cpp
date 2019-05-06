@@ -46,7 +46,7 @@ llvm::cl::opt<unsigned long long>
                               llvm::cl::desc("Start address for deterministic allocation. Has to be page "
                                              "aligned (default=0x7ff30000000)."),
                               llvm::cl::init(0x7ff30000000));
-}
+} // namespace
 
 /***/
 MemoryManager::~MemoryManager() {

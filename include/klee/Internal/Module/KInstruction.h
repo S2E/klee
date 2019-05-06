@@ -10,8 +10,13 @@
 #ifndef KLEE_KINSTRUCTION_H
 #define KLEE_KINSTRUCTION_H
 
-#include <vector>
+#include "klee/Config/Version.h"
+#include "klee/Internal/Module/InstructionInfoTable.h"
+
 #include "llvm/Support/DataTypes.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <vector>
 
 namespace llvm {
 class Instruction;
@@ -21,12 +26,12 @@ namespace klee {
 class Executor;
 struct InstructionInfo;
 class KModule;
-struct KFunction;
 
 /// KInstruction - Intermediate instruction representation used
 /// during execution.
 struct KInstruction {
     llvm::Instruction *inst;
+    const InstructionInfo *info;
 
     /// Value numbers for each operand. -1 is an invalid value,
     /// otherwise negative numbers are indices (negated and offset by
@@ -36,11 +41,9 @@ struct KInstruction {
     /// Destination register index.
     unsigned dest;
 
-    /// The function that owns this instruction
-    KFunction *owner;
-
 public:
     virtual ~KInstruction();
+    std::string getSourceLocation() const;
 };
 
 struct KGEPInstruction : KInstruction {
@@ -51,17 +54,9 @@ struct KGEPInstruction : KInstruction {
     std::vector<std::pair<unsigned, uint64_t>> indices;
 
     /// offset - A constant offset to add to the pointer operand to execute the
-    /// insturction.
+    /// instruction.
     uint64_t offset;
 };
-
-struct KCallInstruction : KInstruction {
-    bool vulnerable; // Whether the result of this call is unchecked, and
-                     // thus may lead to further errors
-    static bool classof(const KInstruction *) {
-        return true;
-    }
-};
-}
+} // namespace klee
 
 #endif

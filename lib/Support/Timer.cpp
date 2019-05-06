@@ -8,25 +8,28 @@
 //===----------------------------------------------------------------------===//
 
 #include "klee/Internal/Support/Timer.h"
+#include "klee/Internal/System/Time.h"
 
 #include "klee/Config/config.h"
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-#include "llvm/System/Process.h"
-#else
+
+#include "llvm/Support/Chrono.h"
 #include "llvm/Support/Process.h"
-#endif
 
 using namespace klee;
 using namespace llvm;
 
 WallTimer::WallTimer() {
-    sys::TimeValue now(0, 0), user(0, 0), sys(0, 0);
+    llvm::sys::TimePoint<> now;
+    std::chrono::nanoseconds user, sys;
     sys::Process::GetTimeUsage(now, user, sys);
-    startMicroseconds = now.usec();
+    m_start = now.time_since_epoch();
 }
 
 uint64_t WallTimer::check() {
-    sys::TimeValue now(0, 0), user(0, 0), sys(0, 0);
+    llvm::sys::TimePoint<> now;
+    std::chrono::nanoseconds user, sys;
     sys::Process::GetTimeUsage(now, user, sys);
-    return now.usec() - startMicroseconds;
+
+    auto diff = now.time_since_epoch() - m_start;
+    return std::chrono::duration_cast<std::chrono::microseconds>(diff).count();
 }

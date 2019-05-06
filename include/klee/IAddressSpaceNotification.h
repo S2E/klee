@@ -50,6 +50,6 @@ public:
     // Only fired in the context of a memory operation (load/store)
     virtual void addressSpaceSymbolicStatusChange(ObjectState *object, bool becameConcrete) = 0;
 };
-}
+} // namespace klee
 
 #endif

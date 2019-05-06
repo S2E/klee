@@ -6,7 +6,8 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#include "klee/Common.h"
+#include "klee/Config/Version.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "Passes.h"
 
@@ -91,7 +92,6 @@ bool checkInstruction(const Instruction *i) {
             return checkOperandTypeIsScalarInt(i, 0) & checkOperandsHaveSameType(i, 1, 2);
         }
         // Integer arithmetic, logical and shifting
-        // TODO: When we upgrade to newer LLVM use LLVM_FALLTHROUGH
         case Instruction::Add:
         case Instruction::Sub:
         case Instruction::Mul:
@@ -150,7 +150,7 @@ bool checkInstruction(const Instruction *i) {
             return true;
     }
 }
-}
+} // namespace
 
 namespace klee {
 
@@ -169,4 +169,4 @@ bool InstructionOperandTypeCheckPass::runOnModule(Module &M) {
 
     return false;
 }
-}
+} // namespace klee

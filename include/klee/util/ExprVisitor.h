@@ -97,6 +97,6 @@ public:
     // modified new expression.
     ref<Expr> visit(const ref<Expr> &e);
 };
-}
+} // namespace klee
 
 #endif

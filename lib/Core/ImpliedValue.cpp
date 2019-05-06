@@ -33,7 +33,7 @@ void ImpliedValue::getImpliedValues(ref<Expr> e, ref<ConstantExpr> value, Implie
             break;
         }
 
-        // Special
+            // Special
 
         case Expr::NotOptimized:
             break;
@@ -80,7 +80,7 @@ void ImpliedValue::getImpliedValues(ref<Expr> e, ref<ConstantExpr> value, Implie
             break;
         }
 
-        // Casting
+            // Casting
 
         case Expr::ZExt:
         case Expr::SExt: {
@@ -89,7 +89,7 @@ void ImpliedValue::getImpliedValues(ref<Expr> e, ref<ConstantExpr> value, Implie
             break;
         }
 
-        // Arithmetic
+            // Arithmetic
 
         case Expr::Add: { // constants on left
             BinaryExpr *be = cast<BinaryExpr>(e);
@@ -117,7 +117,7 @@ void ImpliedValue::getImpliedValues(ref<Expr> e, ref<ConstantExpr> value, Implie
         case Expr::SRem:
             break;
 
-        // Binary
+            // Binary
 
         case Expr::And: {
             BinaryExpr *be = cast<BinaryExpr>(e);

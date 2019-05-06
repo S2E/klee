@@ -139,6 +139,6 @@ public:
 
     virtual bool merge(const ExecutionState &b);
 };
-}
+} // namespace klee
 
 #endif

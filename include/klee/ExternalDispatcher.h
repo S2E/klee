@@ -22,7 +22,7 @@ class Function;
 class FunctionType;
 class Module;
 class LLVMContext;
-}
+} // namespace llvm
 
 namespace klee {
 class ExternalDispatcher {
@@ -57,6 +57,6 @@ public:
     virtual bool executeCall(llvm::Function *function, llvm::Instruction *i, uint64_t *args);
     virtual void *resolveSymbol(const std::string &name);
 };
-}
+} // namespace klee
 
 #endif

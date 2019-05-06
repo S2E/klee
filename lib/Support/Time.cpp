@@ -10,23 +10,27 @@
 #include "klee/Internal/System/Time.h"
 
 #include "klee/Config/config.h"
-#if (LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-#include "llvm/System/Process.h"
-#else
+
+#include "llvm/Support/Chrono.h"
 #include "llvm/Support/Process.h"
-#endif
 
 using namespace llvm;
 using namespace klee;
 
+static double toSeconds(const std::chrono::nanoseconds &duration) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() / (double) 1000000000;
+}
+
 double util::getUserTime() {
-    sys::TimeValue now(0, 0), user(0, 0), sys(0, 0);
+    llvm::sys::TimePoint<> now;
+    std::chrono::nanoseconds user, sys;
     sys::Process::GetTimeUsage(now, user, sys);
-    return (user.seconds() + (double) user.nanoseconds() * 1e-9);
+    return toSeconds(user);
 }
 
 double util::getWallTime() {
-    sys::TimeValue now(0, 0), user(0, 0), sys(0, 0);
+    llvm::sys::TimePoint<> now;
+    std::chrono::nanoseconds user, sys;
     sys::Process::GetTimeUsage(now, user, sys);
-    return (now.seconds() + (double) now.nanoseconds() * 1e-9);
+    return toSeconds(now.time_since_epoch());
 }

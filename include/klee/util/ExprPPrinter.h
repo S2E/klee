@@ -67,6 +67,6 @@ public:
                            const Array *const *evalArraysBegin = 0, const Array *const *evalArraysEnd = 0,
                            bool printArrayDecls = true);
 };
-}
+} // namespace klee
 
 #endif

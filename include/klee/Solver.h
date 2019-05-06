@@ -229,6 +229,6 @@ Solver *createSMTLIBLoggingSolver(Solver *s, std::string path, int minQueryTimeT
 /// createDummySolver - Create a dummy solver implementation which always
 /// fails.
 Solver *createDummySolver();
-}
+} // namespace klee
 
 #endif

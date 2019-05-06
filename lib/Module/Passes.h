@@ -10,6 +10,9 @@
 #ifndef KLEE_PASSES_H
 #define KLEE_PASSES_H
 
+#include "klee/Config/Version.h"
+
+#include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/IntrinsicLowering.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
@@ -21,8 +24,9 @@ class Function;
 class Instruction;
 class Module;
 class DataLayout;
+class TargetLowering;
 class Type;
-}
+} // namespace llvm
 
 namespace klee {
 
@@ -31,8 +35,11 @@ namespace klee {
 class RaiseAsmPass : public llvm::ModulePass {
     static char ID;
 
-    llvm::Function *getIntrinsic(llvm::Module &M, unsigned IID, llvm::Type **Tys, unsigned numTys);
+    const llvm::TargetLowering *TLI;
 
+    llvm::Triple triple;
+
+    llvm::Function *getIntrinsic(llvm::Module &M, unsigned IID, llvm::Type **Tys, unsigned NumTys);
     llvm::Function *getIntrinsic(llvm::Module &M, unsigned IID, llvm::Type *Ty0) {
         return getIntrinsic(M, IID, &Ty0, 1);
     }
@@ -40,10 +47,10 @@ class RaiseAsmPass : public llvm::ModulePass {
     bool runOnInstruction(llvm::Module &M, llvm::Instruction *I);
 
 public:
-    RaiseAsmPass() : llvm::ModulePass(ID) {
+    RaiseAsmPass() : llvm::ModulePass(ID), TLI(0) {
     }
 
-    virtual bool runOnModule(llvm::Module &M);
+    bool runOnModule(llvm::Module &M) override;
 };
 
 // This is a module pass because it can add and delete module
@@ -52,37 +59,18 @@ class IntrinsicCleanerPass : public llvm::ModulePass {
     static char ID;
     const llvm::DataLayout &DataLayout;
     llvm::IntrinsicLowering *IL;
-    bool LowerIntrinsics;
 
-    bool runOnBasicBlock(llvm::BasicBlock &b);
-
-    void injectIntrinsicAddImplementation(llvm::Module &M, const std::string &name, unsigned bits);
-    void replaceIntrinsicAdd(llvm::Module &M, llvm::CallInst *CI);
+    bool runOnBasicBlock(llvm::BasicBlock &b, llvm::Module &M);
 
 public:
-    IntrinsicCleanerPass(const llvm::DataLayout &TD, bool LI = true)
-        : llvm::ModulePass(ID), DataLayout(TD), IL(new llvm::IntrinsicLowering(TD)), LowerIntrinsics(LI) {
+    IntrinsicCleanerPass(const llvm::DataLayout &TD)
+        : llvm::ModulePass(ID), DataLayout(TD), IL(new llvm::IntrinsicLowering(TD)) {
     }
-
     ~IntrinsicCleanerPass() {
         delete IL;
     }
 
-    virtual bool runOnModule(llvm::Module &M);
-    virtual bool runOnFunction(llvm::Function &F);
-};
-
-// A function pass version of the above, but only for bswap
-class IntrinsicFunctionCleanerPass : public llvm::FunctionPass {
-    static char ID;
-
-    bool runOnBasicBlock(llvm::BasicBlock &b);
-
-public:
-    IntrinsicFunctionCleanerPass() : llvm::FunctionPass(ID) {
-    }
-
-    virtual bool runOnFunction(llvm::Function &f);
+    bool runOnModule(llvm::Module &M) override;
 };
 
 // performs two transformations which make interpretation
@@ -104,7 +92,7 @@ public:
     PhiCleanerPass() : llvm::FunctionPass(ID) {
     }
 
-    virtual bool runOnFunction(llvm::Function &f);
+    bool runOnFunction(llvm::Function &f) override;
 };
 
 class DivCheckPass : public llvm::ModulePass {
@@ -113,7 +101,30 @@ class DivCheckPass : public llvm::ModulePass {
 public:
     DivCheckPass() : ModulePass(ID) {
     }
-    virtual bool runOnModule(llvm::Module &M);
+    bool runOnModule(llvm::Module &M) override;
+};
+
+/// This pass injects checks to check for overshifting.
+///
+/// Overshifting is where a Shl, LShr or AShr is performed
+/// where the shift amount is greater than width of the bitvector
+/// being shifted.
+/// In LLVM (and in C/C++) this undefined behaviour!
+///
+/// Example:
+/// \code
+///     unsigned char x=15;
+///     x << 4 ; // Defined behaviour
+///     x << 8 ; // Undefined behaviour
+///     x << 255 ; // Undefined behaviour
+/// \endcode
+class OvershiftCheckPass : public llvm::ModulePass {
+    static char ID;
+
+public:
+    OvershiftCheckPass() : ModulePass(ID) {
+    }
+    bool runOnModule(llvm::Module &M) override;
 };
 
 /// LowerSwitchPass - Replace all SwitchInst instructions with chained branch
@@ -125,10 +136,10 @@ public:
     LowerSwitchPass() : FunctionPass(ID) {
     }
 
-    virtual bool runOnFunction(llvm::Function &F);
+    bool runOnFunction(llvm::Function &F) override;
 
     struct SwitchCase {
-        llvm::Constant *value;
+        llvm ::Constant *value;
         llvm::BasicBlock *block;
 
         SwitchCase() : value(0), block(0) {
@@ -164,6 +175,28 @@ public:
         return instructionOperandsConform;
     }
 };
-}
+
+#ifdef USE_WORKAROUND_LLVM_PR39177
+/// WorkaroundLLVMPR39177Pass - Workaround for LLVM PR39177 within KLEE repo.
+/// For more information on this, please refer to the comments in
+/// cmake/workaround_llvm_pr39177.cmake
+class WorkaroundLLVMPR39177Pass : public llvm::ModulePass {
+public:
+    static char ID;
+    WorkaroundLLVMPR39177Pass() : llvm::ModulePass(ID) {
+    }
+    bool runOnModule(llvm::Module &M) override;
+};
+#endif
+
+/// Instruments every function that contains a KLEE function call as nonopt
+class OptNonePass : public llvm::ModulePass {
+public:
+    static char ID;
+    OptNonePass() : llvm::ModulePass(ID) {
+    }
+    bool runOnModule(llvm::Module &M) override;
+};
+} // namespace klee
 
 #endif

@@ -97,7 +97,7 @@ public:
     SymbolicObjectFinder(std::vector<const Array *> &_objects) : objects(_objects) {
     }
 };
-}
+} // namespace klee
 
 template <typename InputIterator>
 void klee::findSymbolicObjects(InputIterator begin, InputIterator end, std::vector<const Array *> &results) {
@@ -210,4 +210,4 @@ bool getConcatExprPairs(const ref<Expr> &e, ConcatExprPairs &concatExprs) {
 
     return false;
 }
-}
+} // namespace klee

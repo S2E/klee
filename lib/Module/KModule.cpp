@@ -7,83 +7,93 @@
 //
 //===----------------------------------------------------------------------===//
 
-// FIXME: This does not belong here.
-#include "klee/Common.h"
-
-#include "klee/Internal/Module/KModule.h"
+#define DEBUG_TYPE "KModule"
 
 #include "Passes.h"
 
+#include "klee/Config/Version.h"
 #include "klee/Internal/Module/Cell.h"
 #include "klee/Internal/Module/InstructionInfoTable.h"
 #include "klee/Internal/Module/KInstruction.h"
+#include "klee/Internal/Module/KModule.h"
+#include "klee/Internal/Support/Debug.h"
+#include "klee/Internal/Support/ErrorHandling.h"
 #include "klee/Internal/Support/ModuleUtil.h"
 #include "klee/Interpreter.h"
+#include "klee/OptionCategories.h"
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(4, 0)
+#include "llvm/Bitcode/BitcodeWriter.h"
+#else
 #include "llvm/Bitcode/ReaderWriter.h"
+#endif
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ValueSymbolTable.h"
-
-#include "llvm/IR/CallSite.h"
-#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(8, 0)
+#include "llvm/Transforms/Scalar/Scalarizer.h"
+#endif
+#include "llvm/Transforms/Utils/Cloning.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)
+#include "llvm/Transforms/Utils.h"
+#endif
 
 #include <sstream>
 
 using namespace llvm;
 using namespace klee;
 
+namespace klee {
+cl::OptionCategory ModuleCat("Module-related options", "These options affect the compile-time processing of the code.");
+}
+
 namespace {
 enum SwitchImplType { eSwitchTypeSimple, eSwitchTypeLLVM, eSwitchTypeInternal };
 
-cl::list<std::string> MergeAtExit("merge-at-exit");
-
-cl::opt<bool> NoTruncateSourceLines("no-truncate-source-lines",
-                                    cl::desc("Don't truncate long lines in the output source"));
-
-cl::opt<bool> OutputSource("output-source", cl::desc("Write the assembly for the final transformed source"),
-                           cl::init(true));
+cl::opt<bool> OutputSource("output-source",
+                           cl::desc("Write the assembly for the final transformed source (default=true)"),
+                           cl::init(true), cl::cat(ModuleCat));
 
 cl::opt<bool> OutputModule("output-module", cl::desc("Write the bitcode for the final transformed module"),
-                           cl::init(false));
+                           cl::init(false), cl::cat(ModuleCat));
 
-cl::opt<SwitchImplType> SwitchType("switch-type", cl::desc("Select the implementation of switch"),
+cl::opt<SwitchImplType> SwitchType("switch-type", cl::desc("Select the implementation of switch (default=internal)"),
                                    cl::values(clEnumValN(eSwitchTypeSimple, "simple", "lower to ordered branches"),
                                               clEnumValN(eSwitchTypeLLVM, "llvm", "lower using LLVM"),
-                                              clEnumValN(eSwitchTypeInternal, "internal", "execute switch internally"),
-                                              clEnumValEnd),
-                                   cl::init(eSwitchTypeInternal));
+                                              clEnumValN(eSwitchTypeInternal, "internal", "execute switch internally")
+                                                  KLEE_LLVM_CL_VAL_END),
+                                   cl::init(eSwitchTypeInternal), cl::cat(ModuleCat));
 
 cl::opt<bool> DebugPrintEscapingFunctions("debug-print-escaping-functions",
-                                          cl::desc("Print functions whose address is taken."));
-}
+                                          cl::desc("Print functions whose address is taken (default=false)"),
+                                          cl::cat(ModuleCat));
 
-KModule::KModule(Module *_module)
-    : module(_module), dataLayout(new DataLayout(module)), dbgStopPointFn(0), kleeMergeFn(0) {
-}
+// Don't run VerifierPass when checking module
+cl::opt<bool> DontVerify("disable-verify", cl::desc("Do not verify the module integrity (default=false)"),
+                         cl::init(false), cl::cat(klee::ModuleCat));
 
-KModule::~KModule() {
-
-    for (std::vector<KFunction *>::iterator it = functions.begin(), ie = functions.end(); it != ie; ++it)
-        delete *it;
-
-    delete dataLayout;
-
-    // XXX: S2E: we use the module outside, so do not delete it here.
-    // delete module;
-}
+cl::opt<bool> OptimiseKLEECall("klee-call-optimisation",
+                               cl::desc("Allow optimization of functions that "
+                                        "contain KLEE calls (default=true)"),
+                               cl::init(true), cl::cat(ModuleCat));
+} // namespace
 
 /***/
 
 namespace llvm {
-extern void Optimize(Module *);
+extern void Optimize(Module *, llvm::ArrayRef<const char *> preservedFunctions);
 }
 
 // what a hack
@@ -91,32 +101,31 @@ static Function *getStubFunctionForCtorList(Module *m, GlobalVariable *gv, std::
     assert(!gv->isDeclaration() && !gv->hasInternalLinkage() &&
            "do not support old LLVM style constructor/destructor lists");
 
-    llvm::ArrayRef<Type *> nullary(NULL, (size_t) 0);
-    LLVMContext &context = m->getContext();
+    std::vector<Type *> nullary;
 
-    Function *fn = Function::Create(FunctionType::get(Type::getVoidTy(context), nullary, false),
+    Function *fn = Function::Create(FunctionType::get(Type::getVoidTy(m->getContext()), nullary, false),
                                     GlobalVariable::InternalLinkage, name, m);
-    BasicBlock *bb = BasicBlock::Create(context, "entry", fn);
+    BasicBlock *bb = BasicBlock::Create(m->getContext(), "entry", fn);
+    llvm::IRBuilder<> Builder(bb);
 
     // From lli:
     // Should be an array of '{ int, void ()* }' structs.  The first value is
     // the init priority, which we ignore.
-    ConstantArray *arr = dyn_cast<ConstantArray>(gv->getInitializer());
+    auto arr = dyn_cast<ConstantArray>(gv->getInitializer());
     if (arr) {
         for (unsigned i = 0; i < arr->getNumOperands(); i++) {
-            ConstantStruct *cs = cast<ConstantStruct>(arr->getOperand(i));
+            auto cs = cast<ConstantStruct>(arr->getOperand(i));
             // There is a third *optional* element in global_ctor elements (``i8
             // @data``).
             assert((cs->getNumOperands() == 2 || cs->getNumOperands() == 3) &&
                    "unexpected element in ctor initializer list");
-
-            Constant *fp = cs->getOperand(1);
+            auto fp = cs->getOperand(1);
             if (!fp->isNullValue()) {
-                if (llvm::ConstantExpr *ce = dyn_cast<llvm::ConstantExpr>(fp))
+                if (auto ce = dyn_cast<llvm::ConstantExpr>(fp))
                     fp = ce->getOperand(0);
 
-                if (Function *f = dyn_cast<Function>(fp)) {
-                    CallInst::Create(f, "", bb);
+                if (auto f = dyn_cast<Function>(fp)) {
+                    Builder.CreateCall(f);
                 } else {
                     assert(0 && "unable to get function pointer from ctor initializer list");
                 }
@@ -124,110 +133,64 @@ static Function *getStubFunctionForCtorList(Module *m, GlobalVariable *gv, std::
         }
     }
 
-    ReturnInst::Create(context, bb);
+    Builder.CreateRetVoid();
 
     return fn;
 }
 
-static void injectStaticConstructorsAndDestructors(Module *m) {
+static void injectStaticConstructorsAndDestructors(Module *m, llvm::StringRef entryFunction) {
     GlobalVariable *ctors = m->getNamedGlobal("llvm.global_ctors");
     GlobalVariable *dtors = m->getNamedGlobal("llvm.global_dtors");
 
-    if (ctors || dtors) {
-        Function *mainFn = m->getFunction("main");
-        assert(mainFn && "unable to find main function");
+    if (!ctors && !dtors)
+        return;
 
-        if (ctors)
-            CallInst::Create(getStubFunctionForCtorList(m, ctors, "klee.ctor_stub"), "", &*mainFn->begin()->begin());
-        if (dtors) {
-            Function *dtorStub = getStubFunctionForCtorList(m, dtors, "klee.dtor_stub");
-            for (Function::iterator it = mainFn->begin(), ie = mainFn->end(); it != ie; ++it) {
-                if (isa<ReturnInst>(it->getTerminator()))
-                    CallInst::Create(dtorStub, "", it->getTerminator());
+    Function *mainFn = m->getFunction(entryFunction);
+    if (!mainFn)
+        klee_error("Entry function '%s' not found in module.", entryFunction.str().c_str());
+
+    if (ctors) {
+        llvm::IRBuilder<> Builder(&*mainFn->begin()->begin());
+        Builder.CreateCall(getStubFunctionForCtorList(m, ctors, "klee.ctor_stub"));
+    }
+
+    if (dtors) {
+        Function *dtorStub = getStubFunctionForCtorList(m, dtors, "klee.dtor_stub");
+        for (Function::iterator it = mainFn->begin(), ie = mainFn->end(); it != ie; ++it) {
+            if (isa<ReturnInst>(it->getTerminator())) {
+                llvm::IRBuilder<> Builder(it->getTerminator());
+                Builder.CreateCall(dtorStub);
             }
         }
     }
 }
 
-static void forceImport(Module *m, const char *name, Type *retType, ...) {
-    // If module lacks an externally visible symbol for the name then we
-    // need to create one. We have to look in the symbol table because
-    // we want to check everything (global variables, functions, and
-    // aliases).
-
-    Value *v = m->getValueSymbolTable().lookup(name);
-    GlobalValue *gv = dyn_cast_or_null<GlobalValue>(v);
-
-    if (!gv || gv->hasInternalLinkage()) {
-        va_list ap;
-
-        va_start(ap, retType);
-        std::vector<Type *> argTypes;
-        while (Type *t = va_arg(ap, Type *))
-            argTypes.push_back(t);
-        va_end(ap);
-
-        ArrayRef<Type *> argTypesA(argTypes);
-
-        m->getOrInsertFunction(name, FunctionType::get(retType, argTypesA, false));
+void KModule::addInternalFunction(const char *functionName) {
+    Function *internalFunction = module->getFunction(functionName);
+    if (!internalFunction) {
+        KLEE_DEBUG(klee_warning("Failed to add internal function %s. Not found.", functionName));
+        return;
     }
+    KLEE_DEBUG(klee_message("Added function %s.", functionName));
+    internalFunctions.insert(internalFunction);
 }
 
-#ifdef __MINGW32__
-static const char *index(const char *str, char c) {
-    while (*str) {
-        if (*str == c) {
-            return str;
-        }
-        ++str;
-    }
-    return NULL;
+bool KModule::link(std::vector<std::unique_ptr<llvm::Module>> &modules, const std::string &entryPoint) {
+    auto numRemainingModules = modules.size();
+    // Add the currently active module to the list of linkables
+    modules.push_back(std::move(module));
+    std::string error;
+    module = std::unique_ptr<llvm::Module>(klee::linkModules(modules, entryPoint, error));
+    if (!module)
+        klee_error("Could not link KLEE files %s", error.c_str());
+
+    targetData = std::unique_ptr<llvm::DataLayout>(new DataLayout(module.get()));
+
+    // Check if we linked anything
+    return modules.size() != numRemainingModules;
 }
-#endif
 
-void KModule::prepare(const Interpreter::ModuleOptions &opts, InterpreterHandler *ih) {
-    LLVMContext &context = module->getContext();
-
-    if (!MergeAtExit.empty()) {
-        Function *mergeFn = module->getFunction("klee_merge");
-        if (!mergeFn) {
-            llvm::FunctionType *Ty =
-                FunctionType::get(Type::getVoidTy(context), ArrayRef<Type *>(std::vector<Type *>()), false);
-            mergeFn = Function::Create(Ty, GlobalVariable::ExternalLinkage, "klee_merge", module);
-        }
-
-        for (cl::list<std::string>::iterator it = MergeAtExit.begin(), ie = MergeAtExit.end(); it != ie; ++it) {
-            std::string &name = *it;
-            Function *f = module->getFunction(name);
-            if (!f) {
-                klee_error("cannot insert merge-at-exit for: %s (cannot find)", name.c_str());
-            } else if (f->isDeclaration()) {
-                klee_error("cannot insert merge-at-exit for: %s (external)", name.c_str());
-            }
-
-            BasicBlock *exit = BasicBlock::Create(context, "exit", f);
-            PHINode *result = 0;
-            if (f->getReturnType() != Type::getVoidTy(context))
-                result = PHINode::Create(f->getReturnType(), 0, "retval", exit);
-            CallInst::Create(mergeFn, "", exit);
-            ReturnInst::Create(context, result, exit);
-
-            llvm::errs() << "KLEE: adding klee_merge at exit of: " << name << "\n";
-            for (llvm::Function::iterator bbit = f->begin(), bbie = f->end(); bbit != bbie; ++bbit) {
-                if (&*bbit != exit) {
-                    Instruction *i = bbit->getTerminator();
-                    if (i->getOpcode() == Instruction::Ret) {
-                        if (result) {
-                            result->addIncoming(i->getOperand(0), &*bbit);
-                        }
-                        i->eraseFromParent();
-                        BranchInst::Create(exit, &*bbit);
-                    }
-                }
-            }
-        }
-    }
-
+void KModule::instrument(const Interpreter::ModuleOptions &opts) {
     // Inject checks prior to optimization... we also perform the
     // invariant transformations that we will end up doing later so that
     // optimize is seeing what is as close as possible to the final
@@ -243,43 +206,40 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts, InterpreterHandler
     // don't know how to handle vector instructions.
     pm.add(createScalarizerPass());
 
+    // This pass will replace atomic instructions with non-atomic operations
+    pm.add(createLowerAtomicPass());
     if (opts.CheckDivZero)
         pm.add(new DivCheckPass());
-    // FIXME: This false here is to work around a bug in
-    // IntrinsicLowering which caches values which may eventually be
-    // deleted (via RAUW). This can be removed once LLVM fixes this
-    // issue.
-    pm.add(new IntrinsicCleanerPass(*dataLayout, false));
+    if (opts.CheckOvershift)
+        pm.add(new OvershiftCheckPass());
+
+    pm.add(new IntrinsicCleanerPass(*targetData));
     pm.run(*module);
+}
+
+void KModule::optimiseAndPrepare(const Interpreter::ModuleOptions &opts,
+                                 llvm::ArrayRef<const char *> preservedFunctions) {
+    // Preserve all functions containing klee-related function calls from being
+    // optimised around
+    if (!OptimiseKLEECall) {
+        legacy::PassManager pm;
+        pm.add(new OptNonePass());
+        pm.run(*module);
+    }
 
     if (opts.Optimize)
-        Optimize(module);
+        Optimize(module.get(), preservedFunctions);
 
-    // Force importing functions required by intrinsic lowering. Kind of
-    // unfortunate clutter when we don't need them but we won't know
-    // that until after all linking and intrinsic lowering is
-    // done. After linking and passes we just try to manually trim these
-    // by name. We only add them if such a function doesn't exist to
-    // avoid creating stale uses.
-
-    llvm::Type *i8Ty = Type::getInt8Ty(context);
-    forceImport(module, "memcpy", PointerType::getUnqual(i8Ty), PointerType::getUnqual(i8Ty),
-                PointerType::getUnqual(i8Ty), dataLayout->getIntPtrType(context), (Type *) 0);
-    forceImport(module, "memmove", PointerType::getUnqual(i8Ty), PointerType::getUnqual(i8Ty),
-                PointerType::getUnqual(i8Ty), dataLayout->getIntPtrType(context), (Type *) 0);
-    forceImport(module, "memset", PointerType::getUnqual(i8Ty), PointerType::getUnqual(i8Ty), Type::getInt32Ty(context),
-                dataLayout->getIntPtrType(context), (Type *) 0);
-
-    // FIXME: Missing force import for various math functions.
-
-    // FIXME: Find a way that we can test programs without requiring
-    // this to be linked in, it makes low level debugging much more
-    // annoying.
-    linkLibraries(opts);
+    // Add internal functions which are not used to check if instructions
+    // have been already visited
+    if (opts.CheckDivZero)
+        addInternalFunction("klee_div_zero_check");
+    if (opts.CheckOvershift)
+        addInternalFunction("klee_overshift_check");
 
     // Needs to happen after linking (since ctors/dtors can be modified)
     // and optimization (since global optimization can rewrite lists).
-    injectStaticConstructorsAndDestructors(module);
+    injectStaticConstructorsAndDestructors(module.get(), opts.EntryPoint);
 
     // Finally, run the passes that maintain invariants we expect during
     // interpretation. We run the intrinsic cleaner just in case we
@@ -287,10 +247,6 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts, InterpreterHandler
     // going to be unresolved. We really need to handle the intrinsics
     // directly I think?
     legacy::PassManager pm3;
-
-    // the additional linked in libraries may also have vector instructions
-    // so run ScalarizerPass once again to make sure of vector instr cleaned up
-    pm3.add(createScalarizerPass());
     pm3.add(createCFGSimplificationPass());
     switch (SwitchType) {
         case eSwitchTypeInternal:
@@ -304,11 +260,81 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts, InterpreterHandler
         default:
             klee_error("invalid --switch-type");
     }
-    InstructionOperandTypeCheckPass *operandTypeCheckPass = new InstructionOperandTypeCheckPass();
-    pm3.add(new IntrinsicCleanerPass(*dataLayout));
+    pm3.add(new IntrinsicCleanerPass(*targetData));
     pm3.add(new PhiCleanerPass());
-    pm3.add(operandTypeCheckPass);
     pm3.run(*module);
+}
+
+void KModule::manifest(InterpreterHandler *ih, bool forceSourceOutput) {
+    if (OutputSource || forceSourceOutput) {
+        auto os = ih->openOutputFile("assembly.ll");
+        assert(os && "unable to open source output");
+        *os << *module;
+    }
+
+    if (OutputModule) {
+        auto f = ih->openOutputFile("final.bc");
+#if LLVM_VERSION_CODE >= LLVM_VERSION(7, 0)
+        WriteBitcodeToFile(*module, *f);
+#else
+        WriteBitcodeToFile(module.get(), *f);
+#endif
+    }
+
+    /* Build shadow structures */
+
+    infos = std::unique_ptr<InstructionInfoTable>(new InstructionInfoTable(*module.get()));
+
+    std::vector<Function *> declarations;
+
+    for (auto &Function : *module) {
+        if (Function.isDeclaration()) {
+            declarations.push_back(&Function);
+            continue;
+        }
+
+        auto kf = std::unique_ptr<KFunction>(new KFunction(&Function, this));
+
+        for (unsigned i = 0; i < kf->numInstructions; ++i) {
+            KInstruction *ki = kf->instructions[i];
+            ki->info = &infos->getInfo(*ki->inst);
+        }
+
+        functionMap.insert(std::make_pair(&Function, kf.get()));
+        functions.push_back(std::move(kf));
+    }
+
+    /* Compute various interesting properties */
+
+    for (auto &kf : functions) {
+        if (functionEscapes(kf->function))
+            escapingFunctions.insert(kf->function);
+    }
+
+    for (auto &declaration : declarations) {
+        if (functionEscapes(declaration))
+            escapingFunctions.insert(declaration);
+    }
+
+    if (DebugPrintEscapingFunctions && !escapingFunctions.empty()) {
+        llvm::errs() << "KLEE: escaping functions: [";
+        std::string delimiter = "";
+        for (auto &Function : escapingFunctions) {
+            llvm::errs() << delimiter << Function->getName();
+            delimiter = ", ";
+        }
+        llvm::errs() << "]\n";
+    }
+}
+
+void KModule::checkModule() {
+    InstructionOperandTypeCheckPass *operandTypeCheckPass = new InstructionOperandTypeCheckPass();
+
+    legacy::PassManager pm;
+    if (!DontVerify)
+        pm.add(createVerifierPass());
+    pm.add(operandTypeCheckPass);
+    pm.run(*module);
 
     // Enforce the operand type invariants that the Executor expects.  This
     // implicitly depends on the "Scalarizer" pass to be run in order to succeed
@@ -316,167 +342,62 @@ void KModule::prepare(const Interpreter::ModuleOptions &opts, InterpreterHandler
     if (!operandTypeCheckPass->checkPassed()) {
         klee_error("Unexpected instruction operand types detected");
     }
-
-    // For cleanliness see if we can discard any of the functions we
-    // forced to import.
-    Function *f;
-    f = module->getFunction("memcpy");
-    if (f && f->use_empty())
-        f->eraseFromParent();
-    f = module->getFunction("memmove");
-    if (f && f->use_empty())
-        f->eraseFromParent();
-    f = module->getFunction("memset");
-    if (f && f->use_empty())
-        f->eraseFromParent();
-
-    // Write out the .ll assembly file. We truncate long lines to work
-    // around a kcachegrind parsing bug (it puts them on new lines), so
-    // that source browsing works.
-    if (OutputSource) {
-        llvm::raw_ostream *os = ih->openOutputFile("assembly.ll");
-        assert(os && "unable to open source output");
-
-        llvm::raw_ostream *ros = os;
-
-        // We have an option for this in case the user wants a .ll they
-        // can compile.
-        if (NoTruncateSourceLines) {
-            *ros << *module;
-        } else {
-            bool truncated = false;
-            std::string string;
-            llvm::raw_string_ostream rss(string);
-            rss << *module;
-            rss.flush();
-            const char *position = string.c_str();
-
-            for (;;) {
-                const char *end = index(position, '\n');
-                if (!end) {
-                    *ros << position;
-                    break;
-                } else {
-                    unsigned count = (end - position) + 1;
-                    if (count < 255) {
-                        ros->write(position, count);
-                    } else {
-                        ros->write(position, 254);
-                        *ros << "\n";
-                        truncated = true;
-                    }
-                    position = end + 1;
-                }
-            }
-        }
-
-        delete os;
-    }
-
-    if (OutputModule) {
-        llvm::raw_ostream *f = ih->openOutputFile("final.bc");
-        WriteBitcodeToFile(module, *f);
-        delete f;
-    }
-
-    dbgStopPointFn = module->getFunction("llvm.dbg.stoppoint");
-    kleeMergeFn = module->getFunction("klee_merge");
-
-    buildShadowStructures();
 }
 
-void KModule::linkLibraries(const Interpreter::ModuleOptions &opts) {
-    for (std::vector<std::string>::const_iterator it = opts.ExtraLibraries.begin(), ie = opts.ExtraLibraries.end();
-         it != ie; ++it) {
-        module = linkWithLibrary(module, *it);
-    }
+KConstant *KModule::getKConstant(const Constant *c) {
+    auto it = constantMap.find(c);
+    if (it != constantMap.end())
+        return it->second.get();
+    return NULL;
 }
 
-void KModule::buildShadowStructures() {
-    /* Build shadow structures */
+unsigned KModule::getConstantID(Constant *c, KInstruction *ki) {
+    if (KConstant *kc = getKConstant(c))
+        return kc->id;
 
-    for (Module::iterator it = module->begin(), ie = module->end(); it != ie; ++it) {
-        if (it->isDeclaration())
-            continue;
-
-        /* If the functions are from the persistent TB cache, build
-         the shadow structures lazily, when we actually need them */
-        if ((*it).getName().find("tcg-llvm-tb-") != std::string::npos) {
-            continue;
-        }
-
-        KFunction *kf = new KFunction(&*it, this);
-
-        functions.push_back(kf);
-        functionMap.insert(std::make_pair(&*it, kf));
-    }
-
-    /* Compute various interesting properties */
-
-    for (std::vector<KFunction *>::iterator it = functions.begin(), ie = functions.end(); it != ie; ++it) {
-        KFunction *kf = *it;
-        if (functionEscapes(kf->function))
-            escapingFunctions.insert(kf->function);
-    }
-
-    if (DebugPrintEscapingFunctions && !escapingFunctions.empty()) {
-        llvm::errs() << "KLEE: escaping functions: [";
-        for (std::set<Function *>::iterator it = escapingFunctions.begin(), ie = escapingFunctions.end(); it != ie;
-             ++it) {
-            llvm::errs() << (*it)->getName() << ", ";
-        }
-        llvm::errs() << "]\n";
-    }
+    unsigned id = constants.size();
+    auto kc = std::unique_ptr<KConstant>(new KConstant(c, id, ki));
+    constantMap.insert(std::make_pair(c, std::move(kc)));
+    constants.push_back(c);
+    return id;
 }
 
 KFunction *KModule::updateModuleWithFunction(llvm::Function *f) {
     assert(functionMap.find(f) == functionMap.end());
 
-    KFunction *kf = new KFunction(f, this);
-
-    functions.push_back(kf);
-    functionMap.insert(std::make_pair(f, kf));
+    auto kf = std::unique_ptr<KFunction>(new KFunction(f, this));
 
     if (functionEscapes(kf->function))
         escapingFunctions.insert(kf->function);
 
-    return kf;
+    functionMap.insert(std::make_pair(f, kf.get()));
+
+    auto ret = kf.get();
+
+    functions.push_back(std::move(kf));
+
+    return ret;
 }
 
 void KModule::removeFunction(llvm::Function *f, bool keepDeclaration) {
-    std::map<llvm::Function *, KFunction *>::iterator it = functionMap.find(f);
+    auto it = functionMap.find(f);
     assert(it != functionMap.end());
 
-    KFunction *kf = it->second;
-    functions.erase(std::find(functions.begin(), functions.end(), kf));
+    for (auto fit = functions.begin(); fit != functions.end(); ++fit) {
+        if ((*fit).get() == it->second) {
+            functions.erase(fit);
+            break;
+        }
+    }
+
     escapingFunctions.erase(f);
     functionMap.erase(f);
-    delete kf;
 
     if (keepDeclaration) {
         f->deleteBody();
     } else {
         f->eraseFromParent();
     }
-}
-
-KConstant *KModule::getKConstant(Constant *c) {
-    std::map<llvm::Constant *, KConstant *>::iterator it = constantMap.find(c);
-    if (it != constantMap.end())
-        return it->second;
-    return NULL;
-}
-
-unsigned KModule::getConstantID(Constant *c, KInstruction *ki) {
-    KConstant *kc = getKConstant(c);
-    if (kc)
-        return kc->id;
-
-    unsigned id = constants.size();
-    kc = new KConstant(c, id, ki);
-    constantMap.insert(std::make_pair(c, kc));
-    constants.push_back(c);
-    return id;
 }
 
 /***/
@@ -494,7 +415,7 @@ static int getOperandNum(Value *v, std::map<Instruction *, unsigned> &registerMa
         return registerMap[inst];
     } else if (Argument *a = dyn_cast<Argument>(v)) {
         return a->getArgNo();
-    } else if (isa<BasicBlock>(v) || isa<InlineAsm>(v)) {
+    } else if (isa<BasicBlock>(v) || isa<InlineAsm>(v) || isa<MetadataAsValue>(v)) {
         return -1;
     } else {
         assert(isa<Constant>(v));
@@ -505,15 +426,10 @@ static int getOperandNum(Value *v, std::map<Instruction *, unsigned> &registerMa
 
 KFunction::KFunction(llvm::Function *_function, KModule *km)
     : function(_function), numArgs(function->arg_size()), numInstructions(0), trackCoverage(true) {
-
-    legacy::FunctionPassManager pm(_function->getParent());
-    pm.add(new IntrinsicFunctionCleanerPass());
-    pm.run(*_function);
-
-    for (llvm::Function::iterator bbit = function->begin(), bbie = function->end(); bbit != bbie; ++bbit) {
-        BasicBlock *bb = &*bbit;
-        basicBlockEntry[bb] = numInstructions;
-        numInstructions += bb->size();
+    // Assign unique instruction IDs to each basic block
+    for (auto &BasicBlock : *function) {
+        basicBlockEntry[&BasicBlock] = numInstructions;
+        numInstructions += BasicBlock.size();
     }
 
     instructions = new KInstruction *[numInstructions];
@@ -539,22 +455,17 @@ KFunction::KFunction(llvm::Function *_function, KModule *km)
                 case Instruction::ExtractValue:
                     ki = new KGEPInstruction();
                     break;
-
-                case Instruction::Call:
-                case Instruction::Invoke:
-                    ki = new KCallInstruction();
-                    break;
-
                 default:
                     ki = new KInstruction();
                     break;
             }
 
-            ki->inst = &*it;
-            ki->dest = registerMap[&*it];
+            Instruction *inst = &*it;
+            ki->inst = inst;
+            ki->dest = registerMap[inst];
 
             if (isa<CallInst>(it) || isa<InvokeInst>(it)) {
-                CallSite cs(&*it);
+                CallSite cs(inst);
                 unsigned numArgs = cs.arg_size();
                 ki->operands = new int[numArgs + 1];
                 ki->operands[0] = getOperandNum(cs.getCalledValue(), registerMap, km, ki);
@@ -567,24 +478,11 @@ KFunction::KFunction(llvm::Function *_function, KModule *km)
                 ki->operands = new int[numOperands];
                 for (unsigned j = 0; j < numOperands; j++) {
                     Value *v = it->getOperand(j);
-
-                    if (Instruction *inst = dyn_cast<Instruction>(v)) {
-                        ki->operands[j] = registerMap[inst];
-                    } else if (Argument *a = dyn_cast<Argument>(v)) {
-                        ki->operands[j] = a->getArgNo();
-                    } else if (isa<BasicBlock>(v) || isa<InlineAsm>(v) || isa<MDNode>(ValueAsMetadata::get(v))) {
-                        ki->operands[j] = -1;
-                    } else {
-                        assert(isa<Constant>(v));
-                        Constant *c = cast<Constant>(v);
-                        ki->operands[j] = -(km->getConstantID(c, ki) + 2);
-                    }
+                    ki->operands[j] = getOperandNum(v, registerMap, km, ki);
                 }
             }
 
-            ki->owner = this;
             instructions[i++] = ki;
-            instrMap.insert(std::make_pair(&*it, ki));
         }
     }
 }

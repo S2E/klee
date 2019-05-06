@@ -284,6 +284,10 @@ llvm::ExecutionEngine *ExternalDispatcher::getExecutionEngine(llvm::Function *fu
 llvm::ExecutionEngine *ExternalDispatcher::compileModule(llvm::Module *M) {
     assert(executionEngines.find(M) == executionEngines.end());
 
+    if (M->getName().equals("mcjit_mod__cpu_x86_cpuid")) {
+        asm("int $3");
+    }
+
     std::string ErrStr;
     std::unique_ptr<llvm::Module> Owner(M);
     llvm::ExecutionEngine *EE = EngineBuilder(std::move(Owner)).setErrorStr(&ErrStr).create();

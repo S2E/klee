@@ -44,6 +44,6 @@ public:
     size_t getUsedDeterministicSize();
 };
 
-} // End klee namespace
+} // namespace klee
 
 #endif

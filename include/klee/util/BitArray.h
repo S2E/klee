@@ -123,6 +123,6 @@ public:
     }
 };
 
-} // End klee namespace
+} // namespace klee
 
 #endif

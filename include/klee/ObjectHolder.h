@@ -32,6 +32,6 @@ public:
         return (ObjectState *) os;
     }
 };
-}
+} // namespace klee
 
 #endif

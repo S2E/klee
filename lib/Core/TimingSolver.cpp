@@ -43,15 +43,19 @@ bool TimingSolver::evaluate(const ExecutionState &state, ref<Expr> expr, Solver:
     bool success;
 
     if (EnableTimingLog) {
-        sys::TimeValue now(0, 0), user(0, 0), delta(0, 0), sys(0, 0);
+        llvm::sys::TimePoint<> now;
+        std::chrono::nanoseconds user, sys;
         sys::Process::GetTimeUsage(now, user, sys);
 
         success = solver->evaluate(Query(state.constraints, expr), result);
 
-        sys::Process::GetTimeUsage(delta, user, sys);
-        delta -= now;
-        stats::solverTime += delta.usec();
-        state.queryCost += delta.usec() / 1000000.;
+        llvm::sys::TimePoint<> now1;
+        sys::Process::GetTimeUsage(now1, user, sys);
+
+        auto delta = now1 - now;
+        auto usec = std::chrono::duration_cast<std::chrono::microseconds>(delta).count();
+        stats::solverTime += usec;
+        state.queryCost += usec / 1000000.;
     } else {
         success = solver->evaluate(Query(state.constraints, expr), result);
     }
@@ -72,15 +76,19 @@ bool TimingSolver::mustBeTrue(const ExecutionState &state, ref<Expr> expr, bool 
     bool success;
 
     if (EnableTimingLog) {
-        sys::TimeValue now(0, 0), user(0, 0), delta(0, 0), sys(0, 0);
+        llvm::sys::TimePoint<> now;
+        std::chrono::nanoseconds user, sys;
         sys::Process::GetTimeUsage(now, user, sys);
 
         success = solver->mustBeTrue(Query(state.constraints, expr), result);
 
-        sys::Process::GetTimeUsage(delta, user, sys);
-        delta -= now;
-        stats::solverTime += delta.usec();
-        state.queryCost += delta.usec() / 1000000.;
+        llvm::sys::TimePoint<> now1;
+        sys::Process::GetTimeUsage(now1, user, sys);
+
+        auto delta = now1 - now;
+        auto usec = std::chrono::duration_cast<std::chrono::microseconds>(delta).count();
+        stats::solverTime += usec;
+        state.queryCost += usec / 1000000.;
     } else {
         success = solver->mustBeTrue(Query(state.constraints, expr), result);
     }
@@ -122,15 +130,19 @@ bool TimingSolver::getValue(const ExecutionState &state, ref<Expr> expr, ref<Con
     bool success;
 
     if (EnableTimingLog) {
-        sys::TimeValue now(0, 0), user(0, 0), delta(0, 0), sys(0, 0);
+        llvm::sys::TimePoint<> now;
+        std::chrono::nanoseconds user, sys;
         sys::Process::GetTimeUsage(now, user, sys);
 
         success = solver->getValue(Query(state.constraints, expr), result);
 
-        sys::Process::GetTimeUsage(delta, user, sys);
-        delta -= now;
-        stats::solverTime += delta.usec();
-        state.queryCost += delta.usec() / 1000000.;
+        llvm::sys::TimePoint<> now1;
+        sys::Process::GetTimeUsage(now1, user, sys);
+
+        auto delta = now1 - now;
+        auto usec = std::chrono::duration_cast<std::chrono::microseconds>(delta).count();
+        stats::solverTime += usec;
+        state.queryCost += usec / 1000000.;
     } else {
         success = solver->getValue(Query(state.constraints, expr), result);
     }
@@ -146,15 +158,19 @@ bool TimingSolver::getInitialValues(const ConstraintManager &constraints, const 
     bool success;
 
     if (EnableTimingLog) {
-        sys::TimeValue now(0, 0), user(0, 0), delta(0, 0), sys(0, 0);
+        llvm::sys::TimePoint<> now;
+        std::chrono::nanoseconds user, sys;
         sys::Process::GetTimeUsage(now, user, sys);
 
         success = solver->getInitialValues(Query(constraints, ConstantExpr::alloc(0, Expr::Bool)), objects, result);
 
-        sys::Process::GetTimeUsage(delta, user, sys);
-        delta -= now;
-        stats::solverTime += delta.usec();
-        queryCost += delta.usec() / 1000000.;
+        llvm::sys::TimePoint<> now1;
+        sys::Process::GetTimeUsage(now1, user, sys);
+
+        auto delta = now1 - now;
+        auto usec = std::chrono::duration_cast<std::chrono::microseconds>(delta).count();
+        stats::solverTime += usec;
+        queryCost += usec / 1000000.;
     } else {
         success = solver->getInitialValues(Query(constraints, ConstantExpr::alloc(0, Expr::Bool)), objects, result);
     }

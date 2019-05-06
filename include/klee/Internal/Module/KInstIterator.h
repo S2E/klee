@@ -21,15 +21,6 @@ public:
     }
     KInstIterator(KInstruction **_it) : it(_it) {
     }
-    KInstIterator(const KInstIterator &b) : it(b.it) {
-    }
-    ~KInstIterator() {
-    }
-
-    KInstIterator &operator=(const KInstIterator &b) {
-        it = b.it;
-        return *this;
-    }
 
     bool operator==(const KInstIterator &b) const {
         return it == b.it;
@@ -54,6 +45,6 @@ public:
         return *it;
     }
 };
-} // End klee namespace
+} // namespace klee
 
 #endif

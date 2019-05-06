@@ -48,7 +48,7 @@ inline uint64_t zeroMask(uint64_t w) {
 cl::opt<bool> DebugSimplifier("debug-expr-simplifier", cl::init(false));
 
 cl::opt<bool> PrintSimplifier("print-expr-simplifier", cl::init(false));
-}
+} // namespace
 
 ref<Expr> BitfieldSimplifier::replaceWithConstant(ref<Expr> e, uint64_t value) {
     ConstantExpr *ce = dyn_cast<ConstantExpr>(e);
@@ -99,7 +99,7 @@ BitfieldSimplifier::ExprBitsInfo BitfieldSimplifier::doSimplifyBits(ref<Expr> e,
     /* Apply kind-specific knowledge to obtain knownBits for e and
        ignoredBits for kids of e, then to optimize e */
     switch (e->getKind()) {
-        // TODO: Concat, Read, AShr
+            // TODO: Concat, Read, AShr
 
         case Expr::And:
             rbits.knownOneBits = bits[0].knownOneBits & bits[1].knownOneBits;

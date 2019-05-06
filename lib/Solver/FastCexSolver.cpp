@@ -475,7 +475,7 @@ public:
                 // we use this?
                 break;
 
-            // Special
+                // Special
 
             case Expr::NotOptimized:
                 break;
@@ -598,7 +598,7 @@ public:
                 break;
             }
 
-            // Binary
+                // Binary
 
             case Expr::Add: {
                 BinaryExpr *be = cast<BinaryExpr>(e);
@@ -691,7 +691,7 @@ public:
             case Expr::Xor:
                 break;
 
-            // Comparison
+                // Comparison
 
             case Expr::Eq: {
                 BinaryExpr *be = cast<BinaryExpr>(e);
@@ -809,7 +809,7 @@ public:
                 break;
             }
 
-            // Special
+                // Special
 
             case Expr::NotOptimized:
                 break;
@@ -866,7 +866,7 @@ public:
                 break;
             }
 
-            // Casting
+                // Casting
 
             case Expr::ZExt: {
                 break;
@@ -876,7 +876,7 @@ public:
                 break;
             }
 
-            // Binary
+                // Binary
 
             case Expr::And: {
                 break;
@@ -890,7 +890,7 @@ public:
                 break;
             }
 
-            // Comparison
+                // Comparison
 
             case Expr::Eq: {
                 BinaryExpr *be = cast<BinaryExpr>(e);

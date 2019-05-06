@@ -43,7 +43,7 @@ bool klee::PhiCleanerPass::runOnFunction(Function &f) {
                     std::vector<Value *> values;
                     values.reserve(numBlocks);
                     for (unsigned i = 0; i < numBlocks; i++)
-                        values[i] = pi->getIncomingValueForBlock(reference->getIncomingBlock(i));
+                        values.push_back(pi->getIncomingValueForBlock(reference->getIncomingBlock(i)));
                     for (unsigned i = 0; i < numBlocks; i++) {
                         pi->setIncomingBlock(i, reference->getIncomingBlock(i));
                         pi->setIncomingValue(i, values[i]);

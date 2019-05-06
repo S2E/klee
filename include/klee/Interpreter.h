@@ -10,6 +10,7 @@
 #define KLEE_INTERPRETER_H
 
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -25,7 +26,7 @@ class raw_ostream;
 namespace legacy {
 class FunctionPassManager;
 }
-}
+} // namespace llvm
 
 namespace klee {
 class MemoryObject;
@@ -58,15 +59,17 @@ public:
     /// registering a module with the interpreter.
     struct ModuleOptions {
         std::vector<std::string> ExtraLibraries;
+        std::string EntryPoint;
         bool Optimize;
         bool CheckDivZero;
+        bool CheckOvershift;
         bool Snapshot;
         llvm::legacy::FunctionPassManager *CustomPasses;
 
         ModuleOptions(const std::vector<std::string> &_ExtraLibraries, bool _Optimize, bool _CheckDivZero,
                       llvm::legacy::FunctionPassManager *_CustomPasses = NULL)
-            : ExtraLibraries(_ExtraLibraries), Optimize(_Optimize), CheckDivZero(_CheckDivZero), Snapshot(false),
-              CustomPasses(_CustomPasses) {
+            : ExtraLibraries(_ExtraLibraries), Optimize(_Optimize), CheckDivZero(_CheckDivZero), CheckOvershift(false),
+              Snapshot(false), CustomPasses(_CustomPasses) {
         }
     };
 
@@ -90,8 +93,8 @@ public:
     ///
     /// \return The final module after it has been optimized, checks
     /// inserted, and modified for interpretation.
-    virtual const llvm::Module *setModule(llvm::Module *module, const ModuleOptions &opts,
-                                          bool createStatsTracker = true) = 0;
+    virtual const llvm::Module *setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
+                                          const ModuleOptions &opts, bool createStatsTracker = true) = 0;
 
     /*** State accessor methods ***/
     virtual bool getSymbolicSolution(TimingSolver *solver,
@@ -106,6 +109,6 @@ public:
                                      std::vector<std::pair<std::string, std::vector<unsigned char>>> &res) = 0;
 };
 
-} // End klee namespace
+} // namespace klee
 
 #endif

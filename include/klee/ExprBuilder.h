@@ -87,6 +87,6 @@ ExprBuilder *createConstantFoldingExprBuilder(ExprBuilder *Base);
 ///
 /// Base - The base builder to use when constructing expressions.
 ExprBuilder *createSimplifyingExprBuilder(ExprBuilder *Base);
-}
+} // namespace klee
 
 #endif

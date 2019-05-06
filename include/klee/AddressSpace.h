@@ -235,6 +235,6 @@ public:
     /// \return A writeable ObjectState (\a os or a copy).
     ObjectState *getWriteable(const MemoryObject *mo, const ObjectState *os);
 };
-} // End klee namespace
+} // namespace klee
 
 #endif

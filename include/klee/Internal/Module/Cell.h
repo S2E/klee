@@ -18,6 +18,6 @@ class MemoryObject;
 struct Cell {
     ref<Expr> value;
 };
-}
+} // namespace klee
 
 #endif

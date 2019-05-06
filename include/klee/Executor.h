@@ -44,7 +44,7 @@ class Instruction;
 class TargetData;
 class Twine;
 class Value;
-}
+} // namespace llvm
 
 namespace klee {
 class Array;
@@ -241,8 +241,6 @@ protected:
     void bindLocal(KInstruction *target, ExecutionState &state, ref<Expr> value);
     void bindArgument(KFunction *kf, unsigned index, ExecutionState &state, ref<Expr> value);
 
-    ref<klee::ConstantExpr> evalConstantExpr(llvm::ConstantExpr *ce);
-
     /// Get textual information regarding a memory address.
     std::string getAddressInfo(ExecutionState &state, ref<Expr> address) const;
 
@@ -251,6 +249,8 @@ protected:
 
     /// bindModuleConstants - Initialize the module constant table.
     void bindModuleConstants();
+
+    template <typename TypeIt> void computeOffsets(KGEPInstruction *kgepi, TypeIt ib, TypeIt ie);
 
     /// bindInstructionConstants - Initialize any necessary per instruction
     /// constant values.
@@ -334,7 +334,8 @@ public:
     }
 
     // XXX should just be moved out to utility module
-    ref<klee::ConstantExpr> evalConstant(llvm::Constant *c);
+    ref<klee::ConstantExpr> evalConstant(const llvm::Constant *c, const KInstruction *ki = nullptr);
+    ref<klee::ConstantExpr> evalConstantExpr(const llvm::ConstantExpr *ce, const KInstruction *ki = nullptr);
 
     /// Return a unique constant value for the given expression in the
     /// given state, if it has one (i.e. it provably only has a single
@@ -354,8 +355,8 @@ public:
     /// \param purpose An identify string to printed in case of concretization.
     ref<klee::ConstantExpr> toConstant(ExecutionState &state, ref<Expr> e, const char *purpose);
 
-    virtual const llvm::Module *setModule(llvm::Module *module, const ModuleOptions &opts,
-                                          bool createStatsTracker = true);
+    virtual const llvm::Module *setModule(std::vector<std::unique_ptr<llvm::Module>> &modules,
+                                          const ModuleOptions &opts, bool createStatsTracker = true);
 
     // Given a concrete object in our [klee's] address space, add it to
     // objects checked code can reference.
@@ -400,6 +401,6 @@ public:
     void printStack(const ExecutionState &state, KInstruction *target, std::stringstream &msg);
 };
 
-} // End klee namespace
+} // namespace klee
 
 #endif

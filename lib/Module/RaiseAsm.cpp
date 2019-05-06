@@ -7,11 +7,25 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "klee/Config/Version.h"
+#include "klee/Internal/Support/ErrorHandling.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 #include "Passes.h"
 
-#include "llvm/IR/InlineAsm.h"
-#if !(LLVM_VERSION_MAJOR == 2 && LLVM_VERSION_MINOR < 7)
-#include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/Host.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/raw_ostream.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(6, 0)
+#include "llvm/CodeGen/TargetLowering.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/Target/TargetMachine.h"
+#else
+#include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #endif
 
 using namespace llvm;
@@ -26,24 +40,35 @@ Function *RaiseAsmPass::getIntrinsic(llvm::Module &M, unsigned IID, Type **Tys, 
 // FIXME: This should just be implemented as a patch to
 // X86TargetAsmInfo.cpp, then everyone will benefit.
 bool RaiseAsmPass::runOnInstruction(Module &M, Instruction *I) {
-    if (CallInst *ci = dyn_cast<CallInst>(I)) {
-        if (InlineAsm *ia = dyn_cast<InlineAsm>(ci->getCalledValue())) {
-            const std::string &as = ia->getAsmString();
-            const std::string &cs = ia->getConstraintString();
-            const llvm::Type *T = ci->getType();
-            LLVMContext &context = M.getContext();
+    // We can just raise inline assembler using calls
+    CallInst *ci = dyn_cast<CallInst>(I);
+    if (!ci)
+        return false;
 
-            // bswaps
-            if (ci->getNumOperands() == 2 && T == ci->getOperand(1)->getType() &&
-                ((T == llvm::Type::getInt16Ty(context) && as == "rorw $$8, ${0:w}" &&
-                  cs == "=r,0,~{dirflag},~{fpsr},~{flags},~{cc}") ||
-                 (T == llvm::Type::getInt32Ty(context) && as == "rorw $$8, ${0:w};rorl $$16, $0;rorw $$8, ${0:w}" &&
-                  cs == "=r,0,~{dirflag},~{fpsr},~{flags},~{cc}"))) {
-                llvm::Value *Arg0 = ci->getOperand(1);
-                Function *F = getIntrinsic(M, Intrinsic::bswap, Arg0->getType());
-                ci->setOperand(0, F);
-                return true;
-            }
+    InlineAsm *ia = dyn_cast<InlineAsm>(ci->getCalledValue());
+    if (!ia)
+        return false;
+
+    // Try to use existing infrastructure
+    if (!TLI)
+        return false;
+
+    if (TLI->ExpandInlineAsm(ci))
+        return true;
+
+    if (triple.getArch() == llvm::Triple::x86_64 &&
+        (triple.getOS() == llvm::Triple::Linux || triple.getOS() == llvm::Triple::Darwin ||
+         triple.getOS() == llvm::Triple::FreeBSD)) {
+
+        if (ia->getAsmString() == "" && ia->hasSideEffects()) {
+            IRBuilder<> Builder(I);
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 9)
+            Builder.CreateFence(llvm::AtomicOrdering::SequentiallyConsistent);
+#else
+            Builder.CreateFence(llvm::SequentiallyConsistent);
+#endif
+            I->eraseFromParent();
+            return true;
         }
     }
 
@@ -52,6 +77,26 @@ bool RaiseAsmPass::runOnInstruction(Module &M, Instruction *I) {
 
 bool RaiseAsmPass::runOnModule(Module &M) {
     bool changed = false;
+
+    std::string Err;
+    std::string HostTriple = llvm::sys::getDefaultTargetTriple();
+    const Target *NativeTarget = TargetRegistry::lookupTarget(HostTriple, Err);
+
+    TargetMachine *TM = 0;
+    if (NativeTarget == 0) {
+        klee_warning("Warning: unable to select native target: %s", Err.c_str());
+        TLI = 0;
+    } else {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 9)
+        TM = NativeTarget->createTargetMachine(HostTriple, "", "", TargetOptions(), None);
+        TLI = TM->getSubtargetImpl(*(M.begin()))->getTargetLowering();
+#else
+        TM = NativeTarget->createTargetMachine(HostTriple, "", "", TargetOptions());
+        TLI = TM->getSubtargetImpl(*(M.begin()))->getTargetLowering();
+#endif
+
+        triple = llvm::Triple(HostTriple);
+    }
 
     for (Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
         for (Function::iterator bi = fi->begin(), be = fi->end(); bi != be; ++bi) {
@@ -62,6 +107,8 @@ bool RaiseAsmPass::runOnModule(Module &M) {
             }
         }
     }
+
+    delete TM;
 
     return changed;
 }

@@ -114,6 +114,6 @@ public:
         return m_size;
     }
 };
-}
+} // namespace klee
 
 #endif
