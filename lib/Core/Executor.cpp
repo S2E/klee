@@ -1697,7 +1697,6 @@ void Executor::callExternalFunction(ExecutionState &state, KInstruction *target,
     }
 
     ExternalDispatcher::Arguments cas;
-
     unsigned i = 1;
     for (std::vector<ref<Expr>>::iterator ai = arguments.begin(), ae = arguments.end(); ai != ae; ++ai, ++i) {
         ref<Expr> arg = state.toUnique(*ai);
@@ -1742,13 +1741,11 @@ void Executor::callExternalFunction(ExecutionState &state, KInstruction *target,
                 os << ", ";
         }
         os << ")" << std::dec;
-
         klee_warning_external(function, "%s", os.str().c_str());
     }
-
-    uint64_t result;
-    external_fcn_t targetFunction = (external_fcn_t) externalDispatcher->resolveSymbol(function->getName());
-    if (!targetFunction) {
+    uint64_t result = 0;
+    void* targetAddr = externalDispatcher->resolveSymbol(function->getName());
+    if (!targetAddr) {
         std::stringstream ss;
         ss << "Could not find address of external function " << function->getName().str();
         terminateState(state, ss.str());
@@ -1756,14 +1753,13 @@ void Executor::callExternalFunction(ExecutionState &state, KInstruction *target,
     }
 
     std::stringstream ss;
-    if (!externalDispatcher->call(targetFunction, cas, &result, ss)) {
+    if (!externalDispatcher->call(function->getName(), targetAddr, cas, &result, ss)) {
         ss << ": " << function->getName().str();
         terminateState(state, ss.str());
         return;
     }
 
     Type *resultType = target->inst->getType();
-
     if (resultType != Type::getVoidTy(function->getContext())) {
         ref<Expr> resultExpr;
         auto resultWidth = getWidthForLLVMType(resultType);
