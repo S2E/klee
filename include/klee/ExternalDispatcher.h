@@ -21,14 +21,17 @@ namespace klee {
 class ExternalDispatcher {
 private:
 public:
-    typedef uint64_t (*external_fcn_t)(...);
     typedef llvm::SmallVector<uint64_t, 8> Arguments;
 
     ExternalDispatcher();
     virtual ~ExternalDispatcher();
 
     virtual void *resolveSymbol(const std::string &name);
-    virtual bool call(external_fcn_t targetFunction, const Arguments &args, uint64_t *result, std::stringstream &err);
+    virtual bool call(const std::string& targetName, void* targetAddr, const Arguments &args, uint64_t *result, std::stringstream &err);
+
+    uint64_t double_to_rawbits(double value);
+
+    double rawbits_to_double(uint64_t bits);
 };
 }
 
